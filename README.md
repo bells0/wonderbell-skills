@@ -95,6 +95,27 @@ This produces a simple markdown inventory showing which local skills are treated
 - `custom`
 - `unknown`
 
+## Drift Detection
+
+To detect whether your local skill state has changed since the last audit without writing into the repo:
+
+```bash
+python3 scripts/check-skill-drift.py \
+  --skills-root ~/.codex/skills \
+  --builtins catalog/builtins.yaml \
+  --custom catalog/custom.yaml \
+  --third-party catalog/third-party.yaml \
+  --state-file ~/.codex/state/wonderbell-skills-drift.json \
+  --write-state
+```
+
+Recommended usage for automation:
+
+- first run writes the baseline state
+- later runs compare against that state
+- if `changed=no`, do nothing
+- if `changed=yes`, notify in the thread and only update the state after review
+
 ## Repository Philosophy
 
 This repo is shaped by one core idea:
