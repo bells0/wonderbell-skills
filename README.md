@@ -32,6 +32,7 @@ That keeps the repository legally cleaner and reduces duplication.
 
 - `ground-in-project-context`
 - `explore-with-variants`
+- `maintain-skills-repo`
 
 ## Install Locally
 
