@@ -95,6 +95,11 @@ This produces a simple markdown inventory showing which local skills are treated
 - `custom`
 - `unknown`
 
+For the reasoning rules behind maintenance and review, see:
+
+- [docs/automation-setup.md](docs/automation-setup.md)
+- [docs/skill-maintenance-playbook.md](docs/skill-maintenance-playbook.md)
+
 ## Drift Detection
 
 To detect whether your local skill state has changed since the last audit without writing into the repo:
