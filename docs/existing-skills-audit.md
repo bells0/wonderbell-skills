@@ -94,3 +94,9 @@ For this repository, the default rule is:
 - if an existing installed skill already solves the problem, reuse it
 - if the need is project-specific, document it in project docs
 - only create a new skill when it encodes reusable judgment that is currently missing
+
+## Third-Party Source Note
+
+Many of the core workflow skills I rely on come from [`obra/superpowers`](https://github.com/obra/superpowers).
+
+Rather than copying those skills into this repository, I track them in `catalog/third-party.yaml` so this repo can act as a single installation entrypoint while preserving source attribution and update paths.

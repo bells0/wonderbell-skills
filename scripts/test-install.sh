@@ -97,7 +97,55 @@ EOF
   fi
 }
 
+run_third_party_install_test() {
+  local repo_dir="$TMP_DIR/third-party-repo"
+  local worktree_dir="$TMP_DIR/third-party-worktree"
+  local dest_dir="$TMP_DIR/third-party-dest"
+  local vendor_dir="$TMP_DIR/vendor"
+
+  mkdir -p "$repo_dir" "$dest_dir"
+  git -C "$repo_dir" init --bare >/dev/null 2>&1
+
+  git clone "$repo_dir" "$worktree_dir" >/dev/null 2>&1
+  mkdir -p "$worktree_dir/skills/sample-third-party"
+  cat > "$worktree_dir/skills/sample-third-party/SKILL.md" <<'EOF'
+---
+name: sample-third-party
+description: Use when testing third-party installer behavior
+---
+EOF
+  git -C "$worktree_dir" add skills/sample-third-party/SKILL.md
+  git -C "$worktree_dir" -c user.name='Test User' -c user.email='test@example.com' commit -m 'Add sample skill' >/dev/null 2>&1
+  git -C "$worktree_dir" push origin HEAD:main >/dev/null 2>&1
+
+  local third_party_catalog_path="$TMP_DIR/third-party.yaml"
+  cat > "$third_party_catalog_path" <<EOF
+- name: sample-third-party
+  source: git
+  repo: $repo_dir
+  branch: main
+  skill_path: skills/sample-third-party
+  enabled: true
+EOF
+
+  local output="$TMP_DIR/output-third-party.txt"
+  DEST_DIR="$dest_dir" \
+  SRC_DIR="$TMP_DIR/empty-custom-src" \
+  CUSTOM_CATALOG_PATH="$TMP_DIR/empty-custom.yaml" \
+  BUILTIN_CATALOG_PATH="$TMP_DIR/empty-builtins.yaml" \
+  THIRD_PARTY_CATALOG_PATH="$third_party_catalog_path" \
+  VENDOR_DIR="$vendor_dir" \
+  bash "$REPO_ROOT/scripts/install.sh" >"$output" 2>&1
+
+  if [ ! -L "$dest_dir/sample-third-party" ]; then
+    echo "expected enabled third-party skill to be installed"
+    cat "$output"
+    exit 1
+  fi
+}
+
 run_missing_builtin_test
 run_custom_install_test
+run_third_party_install_test
 
 echo "PASS: install script handles strict builtin checks and custom on-demand installs"

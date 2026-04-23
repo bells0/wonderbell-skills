@@ -43,6 +43,8 @@ The installer handles three layers:
 - builtin skills recorded in `catalog/builtins.yaml`
 - third-party skills declared in `catalog/third-party.yaml`
 
+The current third-party catalog includes the `obra/superpowers` workflow skills I use most often.
+
 From the repo root:
 
 ```bash

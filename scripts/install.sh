@@ -157,7 +157,7 @@ sync_third_party_skills() {
   while IFS= read -r item; do
     [ -n "$item" ] || continue
 
-    local enabled source_type name repo branch skill_path checkout_dir source_dir target
+    local enabled source_type name repo branch skill_path checkout_name checkout_dir source_dir target
     enabled="$(python3 -c 'import json,sys; print("true" if json.loads(sys.argv[1]).get("enabled", False) else "false")' "$item")"
     [ "$enabled" = "true" ] || continue
 
@@ -169,10 +169,17 @@ sync_third_party_skills() {
       continue
     fi
 
+    target="$DEST_DIR/$name"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      echo "skip: $name already exists locally"
+      continue
+    fi
+
     repo="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("repo", ""))' "$item")"
     branch="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("branch", "main"))' "$item")"
     skill_path="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("skill_path", "."))' "$item")"
-    checkout_dir="$VENDOR_DIR/$name"
+    checkout_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("checkout", json.loads(sys.argv[1]).get("name", "")))' "$item")"
+    checkout_dir="$VENDOR_DIR/$checkout_name"
 
     if [ -d "$checkout_dir/.git" ]; then
       git -C "$checkout_dir" fetch --all --prune
@@ -183,7 +190,6 @@ sync_third_party_skills() {
     fi
 
     source_dir="$checkout_dir/$skill_path"
-    target="$DEST_DIR/$name"
 
     if [ ! -f "$source_dir/SKILL.md" ]; then
       echo "warning: third-party skill $name missing SKILL.md at $skill_path" >&2
