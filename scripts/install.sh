@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC_DIR="${SRC_DIR:-$REPO_ROOT/skills}"
 DEST_DIR="${DEST_DIR:-${HOME}/.codex/skills}"
+CUSTOM_CATALOG_PATH="${CUSTOM_CATALOG_PATH:-$REPO_ROOT/catalog/custom.yaml}"
 BUILTIN_CATALOG_PATH="${BUILTIN_CATALOG_PATH:-$REPO_ROOT/catalog/builtins.yaml}"
 THIRD_PARTY_CATALOG_PATH="${THIRD_PARTY_CATALOG_PATH:-$REPO_ROOT/catalog/third-party.yaml}"
 VENDOR_DIR="${VENDOR_DIR:-$REPO_ROOT/vendor}"
@@ -62,26 +63,51 @@ PY
 link_skill() {
   local source_dir="$1"
   local target="$2"
+  local name
+  name="$(basename "$target")"
 
   if [ -L "$target" ]; then
     local current
     current="$(readlink "$target" || true)"
     if [ "$current" = "$source_dir" ]; then
-      echo "ok: $(basename "$target") already linked"
+      echo "ok: $name already linked"
       return 0
     fi
-    rm "$target"
+    echo "skip: $name already exists locally"
+    return 0
   elif [ -e "$target" ]; then
-    echo "error: $target exists and is not a symlink; refusing to overwrite" >&2
-    return 1
+    echo "skip: $name already exists locally"
+    return 0
   fi
 
   mkdir -p "$(dirname "$target")"
   ln -s "$source_dir" "$target"
-  echo "linked: $(basename "$target")"
+  echo "linked: $name"
 }
 
 install_custom_skills() {
+  if [ -f "$CUSTOM_CATALOG_PATH" ]; then
+    while IFS= read -r item; do
+      [ -n "$item" ] || continue
+
+      local enabled name skill_dir target
+      enabled="$(python3 -c 'import json,sys; print("true" if json.loads(sys.argv[1]).get("enabled", False) else "false")' "$item")"
+      [ "$enabled" = "true" ] || continue
+
+      name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("name", ""))' "$item")"
+      skill_dir="$SRC_DIR/$name"
+      target="$DEST_DIR/$name"
+
+      if [ ! -f "$skill_dir/SKILL.md" ]; then
+        echo "warning: custom skill $name is enabled but missing from $skill_dir" >&2
+        continue
+      fi
+
+      link_skill "$skill_dir" "$target"
+    done < <(parse_catalog "$CUSTOM_CATALOG_PATH")
+    return 0
+  fi
+
   for skill_dir in "$SRC_DIR"/*; do
     [ -d "$skill_dir" ] || continue
     local name target
@@ -170,6 +196,7 @@ sync_third_party_skills() {
 
 echo "Installing skills from: $SRC_DIR"
 echo "Into: $DEST_DIR"
+echo "Custom catalog: $CUSTOM_CATALOG_PATH"
 echo "Builtin catalog: $BUILTIN_CATALOG_PATH"
 echo "Third-party catalog: $THIRD_PARTY_CATALOG_PATH"
 

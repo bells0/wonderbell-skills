@@ -52,10 +52,10 @@ bash scripts/install.sh
 The installer:
 
 - creates `~/.codex/skills` if needed
-- symlinks each custom skill folder from this repo into `~/.codex/skills`
+- installs only enabled custom skills from `catalog/custom.yaml`
 - verifies builtin skills listed in the catalog are present
 - can fetch enabled third-party git-based skills into `vendor/`
-- refuses to overwrite existing non-symlink paths
+- leaves existing local skills untouched and only installs when missing
 
 ## Updating Skills
 

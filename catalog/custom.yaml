@@ -1,0 +1,4 @@
+- name: ground-in-project-context
+  enabled: true
+- name: explore-with-variants
+  enabled: true
