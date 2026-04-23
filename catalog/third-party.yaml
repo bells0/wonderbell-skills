@@ -1,0 +1,7 @@
+# Example:
+# - name: my-shared-skill
+#   source: git
+#   repo: git@github.com:someone/repo.git
+#   branch: main
+#   skill_path: skills/my-shared-skill
+#   enabled: false

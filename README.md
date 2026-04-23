@@ -13,6 +13,7 @@ This repository is the source of truth for my custom skills. It is designed to b
 
 - `skills/`: custom reusable skills I want to maintain long-term
 - `docs/`: design notes, audits, and operating principles behind the skills
+- `catalog/`: inventory of builtin and third-party skills managed through this repo
 - `scripts/`: helper scripts for installing repo skills into my local Codex setup
 
 ## What This Repo Does Not Contain
@@ -34,7 +35,13 @@ That keeps the repository legally cleaner and reduces duplication.
 
 ## Install Locally
 
-This repository is meant to live anywhere on disk, then symlink its skills into `~/.codex/skills`.
+This repository is meant to live anywhere on disk, then act as the control plane for my skills setup.
+
+The installer handles three layers:
+
+- custom skills from this repo
+- builtin skills recorded in `catalog/builtins.yaml`
+- third-party skills declared in `catalog/third-party.yaml`
 
 From the repo root:
 
@@ -45,7 +52,9 @@ bash scripts/install.sh
 The installer:
 
 - creates `~/.codex/skills` if needed
-- symlinks each skill folder from this repo into `~/.codex/skills`
+- symlinks each custom skill folder from this repo into `~/.codex/skills`
+- verifies builtin skills listed in the catalog are present
+- can fetch enabled third-party git-based skills into `vendor/`
 - refuses to overwrite existing non-symlink paths
 
 ## Updating Skills
@@ -57,6 +66,12 @@ My intended workflow is:
 3. run `bash scripts/install.sh` again if new skills were added
 
 Existing symlinks will continue pointing at the current checkout, so edits to files here are immediately reflected locally.
+
+To enforce that all required builtin skills are present:
+
+```bash
+STRICT_BUILTINS=1 bash scripts/install.sh
+```
 
 ## Repository Philosophy
 
