@@ -75,6 +75,26 @@ To enforce that all required builtin skills are present:
 STRICT_BUILTINS=1 bash scripts/install.sh
 ```
 
+## Auditing Local Skill Sources
+
+To classify the skills currently installed in `~/.codex/skills` against this repository's catalogs:
+
+```bash
+python3 scripts/audit-local-skills.py \
+  --skills-root ~/.codex/skills \
+  --builtins catalog/builtins.yaml \
+  --custom catalog/custom.yaml \
+  --third-party catalog/third-party.yaml \
+  --output docs/local-skills-source-audit.md
+```
+
+This produces a simple markdown inventory showing which local skills are treated as:
+
+- `builtin`
+- `third_party`
+- `custom`
+- `unknown`
+
 ## Repository Philosophy
 
 This repo is shaped by one core idea:
