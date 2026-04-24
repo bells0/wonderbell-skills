@@ -2,6 +2,8 @@
 
 These notes capture the operating principles I most want to preserve when designing or refining agents.
 
+For provisional agent-system methodology notes that may become future skill candidates after project validation, see [agent-system-engineering-methodology.md](agent-system-engineering-methodology.md).
+
 ## 1. Treat agents as workflow systems
 
 A useful agent is not just a model with a tone. It needs:
