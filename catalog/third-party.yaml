@@ -96,3 +96,10 @@
   checkout: superpowers
   skill_path: skills/writing-skills
   enabled: true
+- name: huashu-design
+  source: git
+  repo: https://github.com/alchaincyf/huashu-design.git
+  branch: master
+  checkout: huashu-design
+  skill_path: .
+  enabled: true

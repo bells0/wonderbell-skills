@@ -100,3 +100,5 @@ For this repository, the default rule is:
 Many of the core workflow skills I rely on come from [`obra/superpowers`](https://github.com/obra/superpowers).
 
 Rather than copying those skills into this repository, I track them in `catalog/third-party.yaml` so this repo can act as a single installation entrypoint while preserving source attribution and update paths.
+
+I also track [`alchaincyf/huashu-design`](https://github.com/alchaincyf/huashu-design) as a separate third-party design skill source rather than treating it as a local custom skill.
