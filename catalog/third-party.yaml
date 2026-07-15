@@ -4,97 +4,104 @@
   branch: main
   checkout: superpowers
   skill_path: skills/brainstorming
-  enabled: true
+  enabled: false
 - name: dispatching-parallel-agents
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/dispatching-parallel-agents
-  enabled: true
+  enabled: false
 - name: executing-plans
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/executing-plans
-  enabled: true
+  enabled: false
 - name: finishing-a-development-branch
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/finishing-a-development-branch
-  enabled: true
+  enabled: false
 - name: receiving-code-review
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/receiving-code-review
-  enabled: true
+  enabled: false
 - name: requesting-code-review
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/requesting-code-review
-  enabled: true
+  enabled: false
 - name: subagent-driven-development
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/subagent-driven-development
-  enabled: true
+  enabled: false
 - name: systematic-debugging
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/systematic-debugging
-  enabled: true
+  enabled: false
 - name: test-driven-development
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/test-driven-development
-  enabled: true
+  enabled: false
 - name: using-git-worktrees
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/using-git-worktrees
-  enabled: true
+  enabled: false
 - name: using-superpowers
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/using-superpowers
-  enabled: true
+  enabled: false
 - name: verification-before-completion
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/verification-before-completion
-  enabled: true
+  enabled: false
 - name: writing-plans
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/writing-plans
-  enabled: true
+  enabled: false
 - name: writing-skills
   source: git
   repo: https://github.com/obra/superpowers.git
   branch: main
   checkout: superpowers
   skill_path: skills/writing-skills
+  enabled: false
+- name: gpt56-superpowers
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-superpowers
   enabled: true
 - name: huashu-design
   source: git

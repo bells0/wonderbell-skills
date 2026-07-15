@@ -44,7 +44,7 @@ The installer handles three layers:
 - builtin skills recorded in `catalog/builtins.yaml`
 - third-party skills declared in `catalog/third-party.yaml`
 
-The current third-party catalog includes the `obra/superpowers` workflow skills I use most often, plus `alchaincyf/huashu-design`.
+The current third-party catalog keeps the legacy `obra/superpowers` entries disabled for migration history and enables `bells0/gpt56-superpowers` plus `alchaincyf/huashu-design`.
 
 From the repo root:
 
