@@ -103,6 +103,41 @@
   checkout: gpt56-superpowers
   skill_path: skills/gpt56-superpowers
   enabled: true
+- name: gpt56-design-planning
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-design-planning
+  enabled: true
+- name: gpt56-debugging
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-debugging
+  enabled: true
+- name: gpt56-verification
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-verification
+  enabled: true
+- name: gpt56-delegation-review
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-delegation-review
+  enabled: true
+- name: gpt56-git-delivery
+  source: git
+  repo: https://github.com/bells0/gpt56-superpowers.git
+  branch: main
+  checkout: gpt56-superpowers
+  skill_path: skills/gpt56-git-delivery
+  enabled: true
 - name: huashu-design
   source: git
   repo: https://github.com/alchaincyf/huashu-design.git
