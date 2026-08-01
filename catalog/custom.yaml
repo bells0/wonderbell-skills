@@ -2,3 +2,5 @@
   enabled: true
 - name: explore-with-variants
   enabled: true
+- name: amazon-us-seller-registration
+  enabled: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Amazon 美国站注册"
+  short_description: "协助中国企业完成亚马逊美国站注册、收付款与税务配置"
+  default_prompt: "使用 $amazon-us-seller-registration 指导中国企业安全完成 Amazon 美国站注册，并在关键步骤停下确认。"
+
+policy:
+  allow_implicit_invocation: true
