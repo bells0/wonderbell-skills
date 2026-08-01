@@ -28,12 +28,18 @@ Instead, I keep:
 
 That keeps the repository legally cleaner and reduces duplication.
 
-## Current Custom Skills
+## Skills in This Repository
 
-- `amazon-us-seller-registration`
-- `ground-in-project-context`
-- `explore-with-variants`
-- `maintain-skills-repo`
+Codex can select these skills automatically from their trigger descriptions, or you can invoke one explicitly with `$skill-name`.
+
+| Skill | Use it when | What it helps with |
+| --- | --- | --- |
+| [`amazon-us-seller-registration`](skills/amazon-us-seller-registration/SKILL.md) | A Mainland China company needs to register, resume, troubleshoot, or prepare an Amazon US Seller Central account. | Guides ZiNiao environments, WorldFirst USD receiving accounts, charge methods, identity and bank verification, W-8BEN-E, team permissions, multi-store planning, and FBA readiness. It pauses before sensitive legal, identity, tax, payment, or irreversible actions. |
+| [`ground-in-project-context`](skills/ground-in-project-context/SKILL.md) | The task depends on an existing repository, PRD, screenshot, design system, asset library, document, or schema. | Makes project artifacts the source of truth before implementation, so the result follows real structure and constraints instead of generic assumptions. |
+| [`explore-with-variants`](skills/explore-with-variants/SKILL.md) | A design, naming, writing, layout, product, or concept task has several genuinely viable directions. | Produces meaningfully different options, explains what each optimizes for, and keeps the alternatives comparable before converging. |
+| [`maintain-skills-repo`](skills/maintain-skills-repo/SKILL.md) | This repository, its catalogs, local skill installation, drift audit, or monitoring rules need maintenance. | Routes repository work through the maintenance playbooks and scripts while keeping routine machine state out of Git. |
+
+Only custom skills enabled in [`catalog/custom.yaml`](catalog/custom.yaml) are installed by `scripts/install.sh`.
 
 ## Install Locally
 
