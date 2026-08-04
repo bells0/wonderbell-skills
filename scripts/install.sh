@@ -153,6 +153,7 @@ sync_third_party_skills() {
   [ -f "$THIRD_PARTY_CATALOG_PATH" ] || return 0
 
   mkdir -p "$VENDOR_DIR"
+  local synced_checkouts=""
 
   while IFS= read -r item; do
     [ -n "$item" ] || continue
@@ -181,12 +182,15 @@ sync_third_party_skills() {
     checkout_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("checkout", json.loads(sys.argv[1]).get("name", "")))' "$item")"
     checkout_dir="$VENDOR_DIR/$checkout_name"
 
-    if [ -d "$checkout_dir/.git" ]; then
-      git -C "$checkout_dir" fetch --all --prune
-      git -C "$checkout_dir" checkout "$branch"
-      git -C "$checkout_dir" pull --ff-only origin "$branch"
-    else
-      git clone --branch "$branch" "$repo" "$checkout_dir"
+    if [[ "$synced_checkouts" != *"|$checkout_name|"* ]]; then
+      if [ -d "$checkout_dir/.git" ]; then
+        git -C "$checkout_dir" fetch --all --prune
+        git -C "$checkout_dir" checkout "$branch"
+        git -C "$checkout_dir" pull --ff-only origin "$branch"
+      else
+        git clone --branch "$branch" "$repo" "$checkout_dir"
+      fi
+      synced_checkouts="${synced_checkouts}|$checkout_name|"
     fi
 
     source_dir="$checkout_dir/$skill_path"

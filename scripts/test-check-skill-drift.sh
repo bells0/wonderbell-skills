@@ -17,6 +17,15 @@ description: sample
 EOF
 done
 
+mkdir -p "$TMP_DIR/linked-third-source"
+cat > "$TMP_DIR/linked-third-source/SKILL.md" <<'EOF'
+---
+name: linked-third
+description: sample linked third-party skill
+---
+EOF
+ln -s "$TMP_DIR/linked-third-source" "$SKILLS_ROOT/linked-third"
+
 cat > "$TMP_DIR/builtins.yaml" <<'EOF'
 - name: imagegen
   path: .system/imagegen
@@ -29,7 +38,13 @@ cat > "$TMP_DIR/custom.yaml" <<'EOF'
 EOF
 
 cat > "$TMP_DIR/third-party.yaml" <<'EOF'
-# empty
+- name: linked-third
+  source: git
+  repo: https://example.com/repo.git
+  branch: main
+  checkout: repo
+  skill_path: skills/linked-third
+  enabled: true
 EOF
 
 STATE_FILE="$TMP_DIR/state.json"
@@ -46,6 +61,7 @@ python3 "$REPO_ROOT/scripts/check-skill-drift.py" \
   --write-state > "$OUTPUT1"
 
 grep -q 'changed=yes' "$OUTPUT1"
+grep -q 'third_party:1' "$OUTPUT1"
 
 python3 "$REPO_ROOT/scripts/check-skill-drift.py" \
   --skills-root "$SKILLS_ROOT" \

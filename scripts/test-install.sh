@@ -107,14 +107,21 @@ run_third_party_install_test() {
   git -C "$repo_dir" init --bare >/dev/null 2>&1
 
   git clone "$repo_dir" "$worktree_dir" >/dev/null 2>&1
-  mkdir -p "$worktree_dir/skills/sample-third-party"
+  mkdir -p "$worktree_dir/skills/sample-third-party" "$worktree_dir/skills/sample-third-party-two"
   cat > "$worktree_dir/skills/sample-third-party/SKILL.md" <<'EOF'
 ---
 name: sample-third-party
 description: Use when testing third-party installer behavior
 ---
 EOF
-  git -C "$worktree_dir" add skills/sample-third-party/SKILL.md
+
+  cat > "$worktree_dir/skills/sample-third-party-two/SKILL.md" <<'EOF'
+---
+name: sample-third-party-two
+description: Use when testing shared third-party checkout behavior
+---
+EOF
+  git -C "$worktree_dir" add skills/sample-third-party/SKILL.md skills/sample-third-party-two/SKILL.md
   git -C "$worktree_dir" -c user.name='Test User' -c user.email='test@example.com' commit -m 'Add sample skill' >/dev/null 2>&1
   git -C "$worktree_dir" push origin HEAD:main >/dev/null 2>&1
 
@@ -124,7 +131,15 @@ EOF
   source: git
   repo: $repo_dir
   branch: main
+  checkout: shared-third-party
   skill_path: skills/sample-third-party
+  enabled: true
+- name: sample-third-party-two
+  source: git
+  repo: $repo_dir
+  branch: main
+  checkout: shared-third-party
+  skill_path: skills/sample-third-party-two
   enabled: true
 EOF
 
@@ -139,6 +154,12 @@ EOF
 
   if [ ! -L "$dest_dir/sample-third-party" ]; then
     echo "expected enabled third-party skill to be installed"
+    cat "$output"
+    exit 1
+  fi
+
+  if [ ! -L "$dest_dir/sample-third-party-two" ]; then
+    echo "expected a second skill from the shared checkout to be installed"
     cat "$output"
     exit 1
   fi

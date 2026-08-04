@@ -17,6 +17,15 @@ description: sample
 EOF
 done
 
+mkdir -p "$TMP_DIR/linked-third-source"
+cat > "$TMP_DIR/linked-third-source/SKILL.md" <<'EOF'
+---
+name: linked-third
+description: sample linked third-party skill
+---
+EOF
+ln -s "$TMP_DIR/linked-third-source" "$SKILLS_ROOT/linked-third"
+
 BUILTINS="$TMP_DIR/builtins.yaml"
 cat > "$BUILTINS" <<'EOF'
 - name: imagegen
@@ -39,6 +48,13 @@ cat > "$THIRD" <<'EOF'
   checkout: repo
   skill_path: skills/bar-third
   enabled: true
+- name: linked-third
+  source: git
+  repo: https://example.com/repo.git
+  branch: main
+  checkout: repo
+  skill_path: skills/linked-third
+  enabled: true
 EOF
 
 OUTPUT="$TMP_DIR/report.md"
@@ -52,6 +68,7 @@ python3 "$REPO_ROOT/scripts/audit-local-skills.py" \
 grep -q '| `.system/imagegen` | `builtin` |' "$OUTPUT"
 grep -q '| `foo-custom` | `custom` |' "$OUTPUT"
 grep -q '| `bar-third` | `third_party` |' "$OUTPUT"
+grep -q '| `linked-third` | `third_party` |' "$OUTPUT"
 grep -q '| `unknown-skill` | `unknown` |' "$OUTPUT"
 
 echo "PASS: audit-local-skills classifies builtin, custom, third-party, and unknown skills"

@@ -50,11 +50,18 @@ def parse_simple_yaml_list(path: Path) -> list[dict[str, Any]]:
 
 
 def find_local_skills(skills_root: Path) -> list[str]:
-    skills: list[str] = []
+    skills: set[str] = set()
     for skill_file in sorted(skills_root.rglob("SKILL.md")):
         rel = skill_file.parent.relative_to(skills_root).as_posix()
-        skills.append(rel)
-    return skills
+        skills.add(rel)
+
+    # pathlib.rglob does not descend into directory symlinks. Repo-managed skills
+    # are installed as top-level links, so inspect those entrypoints explicitly.
+    for entry in sorted(skills_root.iterdir()):
+        if (entry / "SKILL.md").is_file():
+            skills.add(entry.relative_to(skills_root).as_posix())
+
+    return sorted(skills)
 
 
 def classify_skill(

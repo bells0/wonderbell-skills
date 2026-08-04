@@ -51,7 +51,7 @@ The installer handles three layers:
 - builtin skills recorded in `catalog/builtins.yaml`
 - third-party skills declared in `catalog/third-party.yaml`
 
-The current third-party catalog keeps the legacy `obra/superpowers` entries disabled for migration history and enables `bells0/gpt56-superpowers` plus `alchaincyf/huashu-design`.
+The current third-party catalog keeps the legacy `obra/superpowers` entries disabled for migration history and enables `bells0/gpt56-superpowers`, `alchaincyf/huashu-design`, and all 68 product-management skills from `phuryn/pm-skills`.
 
 From the repo root:
 
