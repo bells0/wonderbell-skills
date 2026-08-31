@@ -1,6 +1,6 @@
 # wonderbell-skills
 
-Personal Codex skills, notes, and operating principles maintained in a public GitHub repository.
+A public control plane for curated Codex Skills: original Skills maintained here, external Skill suites referenced at their source, and one installation and audit entry point.
 
 This repository is the source of truth for my custom skills. It is designed to be:
 
@@ -15,6 +15,9 @@ This repository is the source of truth for my custom skills. It is designed to b
 - `docs/`: design notes, audits, and operating principles behind the skills
 - `catalog/`: inventory of builtin and third-party skills managed through this repo
 - `scripts/`: helper scripts for installing repo skills into my local Codex setup
+
+The ownership and integration boundaries are documented in [Repository Architecture](docs/repository-architecture.md).
+Contributions follow the branch → pull request → review → merge policy in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What This Repo Does Not Contain
 
@@ -38,6 +41,19 @@ Codex can select these skills automatically from their trigger descriptions, or 
 | [`ground-in-project-context`](skills/ground-in-project-context/SKILL.md) | The task depends on an existing repository, PRD, screenshot, design system, asset library, document, or schema. | Makes project artifacts the source of truth before implementation, so the result follows real structure and constraints instead of generic assumptions. |
 | [`explore-with-variants`](skills/explore-with-variants/SKILL.md) | A design, naming, writing, layout, product, or concept task has several genuinely viable directions. | Produces meaningfully different options, explains what each optimizes for, and keeps the alternatives comparable before converging. |
 | [`maintain-skills-repo`](skills/maintain-skills-repo/SKILL.md) | This repository, its catalogs, local skill installation, drift audit, or monitoring rules need maintenance. | Routes repository work through the maintenance playbooks and scripts while keeping routine machine state out of Git. |
+| [`hatch-pet`](skills/hatch-pet/SKILL.md) | A Codex-compatible animated pet or mascot needs to be created, repaired, validated, visually reviewed, or packaged. | Provides deterministic sprite-atlas assembly, direction and animation QA, and Codex v2 pet packaging. |
+
+## External Skill Collections
+
+This repository provides one installation entry point without copying upstream source. Enabled collections currently include:
+
+- [`bells0/agentic-superpowers`](https://github.com/bells0/agentic-superpowers) for the coordinated workflow, delivery, verification, delegation, and Git suite;
+- [`phuryn/pm-skills`](https://github.com/phuryn/pm-skills) for product-management methods;
+- [`kepano/obsidian-skills`](https://github.com/kepano/obsidian-skills) for Obsidian, JSON Canvas, and Defuddle workflows;
+- [`alchaincyf/huashu-design`](https://github.com/alchaincyf/huashu-design) for HTML prototype and interaction design;
+- [`nextlevelbuilder/ui-ux-pro-max-skill`](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) for local UI/UX guidance.
+
+Exact enabled Skills and source paths are recorded in [`catalog/third-party.yaml`](catalog/third-party.yaml).
 
 Only custom skills enabled in [`catalog/custom.yaml`](catalog/custom.yaml) are installed by `scripts/install.sh`.
 
@@ -51,7 +67,7 @@ The installer handles three layers:
 - builtin skills recorded in `catalog/builtins.yaml`
 - third-party skills declared in `catalog/third-party.yaml`
 
-The current third-party catalog keeps the legacy `obra/superpowers` entries disabled for migration history and enables `bells0/gpt56-superpowers`, `alchaincyf/huashu-design`, and all 68 product-management skills from `phuryn/pm-skills`.
+The third-party catalog records exact repositories and Skill paths for Agentic Superpowers, product-management, Obsidian, and design collections. Legacy `obra/*` and `gpt56-*` names are intentionally absent from the active catalog; Agentic Superpowers owns its own upgrade and compatibility behavior.
 
 From the repo root:
 
@@ -93,7 +109,7 @@ python3 scripts/audit-local-skills.py \
   --builtins catalog/builtins.yaml \
   --custom catalog/custom.yaml \
   --third-party catalog/third-party.yaml \
-  --output docs/local-skills-source-audit.md
+  --output ~/.codex/state/wonderbell-skills/local-skills-source-audit.md
 ```
 
 This produces a simple markdown inventory showing which local skills are treated as:
@@ -143,3 +159,7 @@ That means:
 - new skills should only exist when they add real value
 
 See [docs/existing-skills-audit.md](docs/existing-skills-audit.md) for the initial inventory and rationale.
+
+## License
+
+The repository is released under the [MIT License](LICENSE). A nested Skill may carry its own license; for example, `skills/hatch-pet` retains its Apache-2.0 license notice.

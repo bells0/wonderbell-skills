@@ -101,3 +101,5 @@ For this repository, the default stance is:
 - reminders should only happen when something changes
 - routine state stays outside git
 - durable knowledge belongs in the catalogs, scripts, or docs
+
+Generated local inventory reports belong under `~/.codex/state/wonderbell-skills/` or another device-local state directory. Do not commit absolute machine paths or routine audit snapshots to the public repository.

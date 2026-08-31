@@ -13,17 +13,12 @@
 - name: skill-installer
   path: .system/skill-installer
   required: true
-- name: PowerPoint
-  path: codex-primary-runtime/slides
-  required: true
-- name: Excel
-  path: codex-primary-runtime/spreadsheets
-  required: true
-- name: doc
-  required: true
+- name: review-agent
+  path: .system/review-agent
+  required: false
 - name: pdf
-  required: true
+  required: false
 - name: playwright
-  required: true
+  required: false
 - name: sora
-  required: true
+  required: false
