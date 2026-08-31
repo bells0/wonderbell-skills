@@ -4,3 +4,5 @@
   enabled: true
 - name: amazon-us-seller-registration
   enabled: true
+- name: hatch-pet
+  enabled: true

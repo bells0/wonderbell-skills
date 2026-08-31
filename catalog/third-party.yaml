@@ -1,142 +1,79 @@
-- name: brainstorming
+- name: agentic-superpowers
   source: git
-  repo: https://github.com/obra/superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: superpowers
-  skill_path: skills/brainstorming
-  enabled: false
-- name: dispatching-parallel-agents
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/dispatching-parallel-agents
-  enabled: false
-- name: executing-plans
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/executing-plans
-  enabled: false
-- name: finishing-a-development-branch
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/finishing-a-development-branch
-  enabled: false
-- name: receiving-code-review
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/receiving-code-review
-  enabled: false
-- name: requesting-code-review
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/requesting-code-review
-  enabled: false
-- name: subagent-driven-development
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/subagent-driven-development
-  enabled: false
-- name: systematic-debugging
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/systematic-debugging
-  enabled: false
-- name: test-driven-development
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/test-driven-development
-  enabled: false
-- name: using-git-worktrees
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/using-git-worktrees
-  enabled: false
-- name: using-superpowers
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/using-superpowers
-  enabled: false
-- name: verification-before-completion
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/verification-before-completion
-  enabled: false
-- name: writing-plans
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/writing-plans
-  enabled: false
-- name: writing-skills
-  source: git
-  repo: https://github.com/obra/superpowers.git
-  branch: main
-  checkout: superpowers
-  skill_path: skills/writing-skills
-  enabled: false
-- name: gpt56-superpowers
-  source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
-  branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-superpowers
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-superpowers
   enabled: true
-- name: gpt56-design-planning
+- name: agentic-orchestrate-delivery
   source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-design-planning
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-orchestrate-delivery
   enabled: true
-- name: gpt56-debugging
+- name: agentic-design-planning
   source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-debugging
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-design-planning
   enabled: true
-- name: gpt56-verification
+- name: agentic-writing-plans
   source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-verification
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-writing-plans
   enabled: true
-- name: gpt56-delegation-review
+- name: agentic-using-git-worktrees
   source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-delegation-review
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-using-git-worktrees
   enabled: true
-- name: gpt56-git-delivery
+- name: agentic-subagent-driven-development
   source: git
-  repo: https://github.com/bells0/gpt56-superpowers.git
+  repo: https://github.com/bells0/agentic-superpowers.git
   branch: main
-  checkout: gpt56-superpowers
-  skill_path: skills/gpt56-git-delivery
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-subagent-driven-development
+  enabled: true
+- name: agentic-debugging
+  source: git
+  repo: https://github.com/bells0/agentic-superpowers.git
+  branch: main
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-debugging
+  enabled: true
+- name: agentic-verification
+  source: git
+  repo: https://github.com/bells0/agentic-superpowers.git
+  branch: main
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-verification
+  enabled: true
+- name: agentic-purpose-bound-rigor
+  source: git
+  repo: https://github.com/bells0/agentic-superpowers.git
+  branch: main
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-purpose-bound-rigor
+  enabled: true
+- name: agentic-delegation-review
+  source: git
+  repo: https://github.com/bells0/agentic-superpowers.git
+  branch: main
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-delegation-review
+  enabled: true
+- name: agentic-git-delivery
+  source: git
+  repo: https://github.com/bells0/agentic-superpowers.git
+  branch: main
+  checkout: agentic-superpowers
+  skill_path: skills/agentic-git-delivery
   enabled: true
 - name: huashu-design
   source: git
@@ -144,6 +81,48 @@
   branch: master
   checkout: huashu-design
   skill_path: .
+  enabled: true
+- name: defuddle
+  source: git
+  repo: https://github.com/kepano/obsidian-skills.git
+  branch: main
+  checkout: obsidian-skills
+  skill_path: skills/defuddle
+  enabled: true
+- name: json-canvas
+  source: git
+  repo: https://github.com/kepano/obsidian-skills.git
+  branch: main
+  checkout: obsidian-skills
+  skill_path: skills/json-canvas
+  enabled: true
+- name: obsidian-bases
+  source: git
+  repo: https://github.com/kepano/obsidian-skills.git
+  branch: main
+  checkout: obsidian-skills
+  skill_path: skills/obsidian-bases
+  enabled: true
+- name: obsidian-cli
+  source: git
+  repo: https://github.com/kepano/obsidian-skills.git
+  branch: main
+  checkout: obsidian-skills
+  skill_path: skills/obsidian-cli
+  enabled: true
+- name: obsidian-markdown
+  source: git
+  repo: https://github.com/kepano/obsidian-skills.git
+  branch: main
+  checkout: obsidian-skills
+  skill_path: skills/obsidian-markdown
+  enabled: true
+- name: ui-ux-pro-max
+  source: git
+  repo: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
+  branch: main
+  checkout: ui-ux-pro-max-skill
+  skill_path: .claude/skills/ui-ux-pro-max
   enabled: true
 - name: intended-vs-implemented
   source: git
