@@ -17,6 +17,7 @@ This repository is the source of truth for my custom skills. It is designed to b
 - `scripts/`: helper scripts for installing repo skills into my local Codex setup
 
 The ownership and integration boundaries are documented in [Repository Architecture](docs/repository-architecture.md).
+Contributions follow the branch → pull request → review → merge policy in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What This Repo Does Not Contain
 
