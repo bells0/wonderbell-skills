@@ -28,15 +28,15 @@ The script uses `IMAGEGEN_*` values first and falls back to `OPENAI_API_KEY`, `O
 
 ## One-step configuration
 
-For a non-technical macOS user, double-click:
+For a non-technical Windows user, double-click:
 
 ```text
-scripts/setup-seedream.command
+scripts\setup-seedream.cmd
 ```
 
-The window asks only for the Key and confirms when setup is complete. The Key is hidden while pasted. The configuration is stored at `~/.config/wonderbell-imagegen/.env`, and later image-generation runs find it automatically.
+The Windows launcher uses the system PowerShell. It asks only for the Key and confirms when setup is complete. The Key is hidden while pasted, saved under `%APPDATA%\WonderbellImagegen\.env`, and restricted to the current Windows account. Later image-generation runs find it automatically.
 
-For other systems, the configurator supplies the known base URL and model ID; the only hidden prompt is the Key:
+On macOS, double-click `scripts/setup-seedream.command`. On other systems, the configurator supplies the known base URL and model ID; the only hidden prompt is the Key:
 
 ```bash
 python3 <skill-dir>/scripts/configure.py ark
@@ -50,24 +50,28 @@ python3 <skill-dir>/scripts/configure.py ark \
   --env-file .env
 ```
 
-The configurator writes atomically, preserves unrelated entries, and changes the target file to mode `0600`. It does not copy a Key from another application or database automatically. Advanced users may still pass `--env-file` to choose another location.
+The Python configurator writes atomically, preserves unrelated entries, and changes the target file to mode `0600`. The Windows launcher applies a file ACL for the current account. Neither copies a Key from another application or database automatically. Advanced users may still pass `--env-file` to choose another location.
+
+## Agent compatibility
+
+The portable contract is this `SKILL.md` folder plus its local scripts. It does not call Codex-specific tools. Agents that implement the Agent Skills convention can load it directly; other agents can use it only if their product supports importing a skill folder or equivalent instructions. The generation script requires Python 3. On Windows, an agent should use `py -3` when available and fall back to `python`.
 
 ## Common commands
 
 Text-to-image check and execution:
 
 ```bash
-python3 <skill-dir>/scripts/generate_image.py --check \
+<python> <skill-dir>/scripts/generate_image.py --check \
   --prompt-file prompt.txt --name hero
 
-python3 <skill-dir>/scripts/generate_image.py --execute \
+<python> <skill-dir>/scripts/generate_image.py --execute \
   --prompt-file prompt.txt --name hero --output-dir generated-images
 ```
 
 Reference-image generation:
 
 ```bash
-python3 <skill-dir>/scripts/generate_image.py --execute \
+<python> <skill-dir>/scripts/generate_image.py --execute \
   --prompt-file prompt.txt \
   --reference /absolute/path/product-front.png \
   --reference /absolute/path/product-detail.jpg \

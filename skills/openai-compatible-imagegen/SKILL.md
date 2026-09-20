@@ -1,25 +1,25 @@
 ---
 name: openai-compatible-imagegen
-description: Generate or edit images through OpenAI-compatible Images APIs or Volcengine Ark Seedream using a user-configured API key and base URL. Use for direct prompt-to-image or reference-image generation that should be saved locally with traceable request records; do not use for full ecommerce Listing production.
+description: Generate or edit images through OpenAI-compatible Images APIs or Volcengine Ark Seedream using a user-configured API key and base URL. Use from any Agent Skills-compatible agent for direct prompt-to-image or reference-image generation with traceable local results; do not use for full ecommerce Listing production.
 ---
 
 # OpenAI-Compatible ImageGen
 
-Generate an image through the user's configured provider and keep the result, request settings, and source-image fingerprints together in a local run directory. The included script uses only the Python standard library.
+Generate an image through the user's configured provider and keep the result, request settings, and source-image fingerprints together in a local run directory. This skill uses ordinary `SKILL.md` instructions and local scripts; it does not depend on Codex-only APIs. An agent must support Agent Skills or be able to read this folder and run its scripts.
 
 ## First-time setup
 
 Keep setup non-technical. Do not ask the user to paste a Key into chat or explain environment variables unless they ask.
 
-For a macOS user, direct them to double-click `scripts/setup-seedream.command`. It supplies the Ark URL and Seedream model automatically; the user only pastes the Key into the private hidden prompt once. When UI access is available, open the launcher for them instead of giving terminal instructions.
+For a Windows user, direct them to double-click `scripts/setup-seedream.cmd`. It uses Windows PowerShell to supply the Ark URL and Seedream model automatically; the user only pastes the Key into the private hidden prompt once. When UI access is available, open the launcher for them instead of giving terminal instructions.
 
-For other systems, run this guided setup:
+For macOS, use `scripts/setup-seedream.command`. For other systems, run the guided Python setup:
 
 ```text
 python3 <skill-dir>/scripts/configure.py ark
 ```
 
-The setup writes a private per-user configuration that later runs find automatically. Never print, copy into prompts, commit, or return the Key. Read [configuration.md](references/configuration.md) only for custom providers or advanced settings. For Ark protocol details, read [ark-seedream.md](references/ark-seedream.md).
+The setup writes a private per-user configuration that later runs find automatically. Never print, copy into prompts, commit, or return the Key. The generation adapter requires Python 3, but the agent—not the user—should select the available Windows launcher (`py -3` or `python`) and handle that dependency. Read [configuration.md](references/configuration.md) only for custom providers or advanced settings. For Ark protocol details, read [ark-seedream.md](references/ark-seedream.md).
 
 ## Generate
 
@@ -27,8 +27,8 @@ The setup writes a private per-user configuration that later runs find automatic
 2. Prepare the prompt and output path for the user. Do not make them assemble commands or configuration fields. Prefer `--prompt-file` so long prompts do not leak into shell history or process listings.
 3. Validate locally first. This does not call the provider:
 
-```bash
-python3 <skill-dir>/scripts/generate_image.py \
+```text
+<python> <skill-dir>/scripts/generate_image.py \
   --check \
   --prompt-file prompt.txt \
   --name concept-01
@@ -36,8 +36,8 @@ python3 <skill-dir>/scripts/generate_image.py \
 
 4. Execute only when the current request authorizes the external generation and any reference-image upload. Setup, inspection, or dry-run requests do not authorize a paid call.
 
-```bash
-python3 <skill-dir>/scripts/generate_image.py \
+```text
+<python> <skill-dir>/scripts/generate_image.py \
   --execute \
   --prompt-file prompt.txt \
   --name concept-01 \

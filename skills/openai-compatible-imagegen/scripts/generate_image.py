@@ -33,6 +33,9 @@ class ImageGenError(RuntimeError):
 
 
 def default_env_file() -> Path:
+    windows_home = os.environ.get("APPDATA", "").strip()
+    if windows_home:
+        return Path(windows_home).expanduser() / "WonderbellImagegen" / ".env"
     configured_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
     root = Path(configured_home).expanduser() if configured_home else Path.home() / ".config"
     return root / "wonderbell-imagegen" / ".env"
@@ -158,8 +161,9 @@ def load_config(path: Path) -> Config:
     api_key = setting(values, "IMAGEGEN_API_KEY", "OPENAI_API_KEY")
     base_url = setting(values, "IMAGEGEN_BASE_URL", "OPENAI_BASE_URL")
     if not api_key or not base_url:
+        setup_launcher = "setup-seedream.cmd" if os.name == "nt" else "setup-seedream.command"
         raise ImageGenError(
-            "image generation is not configured; run setup-seedream.command once"
+            f"image generation is not configured; run {setup_launcher} once"
         )
     reference_field = setting(values, "IMAGEGEN_REFERENCE_FIELD", default="image[]")
     if not SAFE_FIELD.fullmatch(reference_field):

@@ -33,6 +33,9 @@ PRESETS = {
 
 def default_env_file() -> Path:
     """Return one stable per-user config path without requiring shell setup."""
+    windows_home = os.environ.get("APPDATA", "").strip()
+    if windows_home:
+        return Path(windows_home).expanduser() / "WonderbellImagegen" / ".env"
     configured_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
     root = Path(configured_home).expanduser() if configured_home else Path.home() / ".config"
     return root / "wonderbell-imagegen" / ".env"
@@ -216,7 +219,7 @@ def run() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print("\n配置完成。")
-        print("以后直接告诉 Codex 想生成什么图片即可。")
+        print("以后直接告诉你的 AI 助手想生成什么图片即可。")
         print(f"配置已安全保存在：{path}")
     return 0
 

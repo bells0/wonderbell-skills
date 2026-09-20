@@ -12,6 +12,8 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "configure.py"
 GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate_image.py"
 LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.command"
+WINDOWS_LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.cmd"
+WINDOWS_SETUP = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.ps1"
 
 
 class ConfigureTests(unittest.TestCase):
@@ -164,6 +166,52 @@ class ConfigureTests(unittest.TestCase):
             self.assertIn("配置完成", result.stdout)
             self.assertNotIn("private-test-key", result.stdout + result.stderr)
             self.assertTrue(target.is_file())
+
+    def test_windows_appdata_config_is_found_automatically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            appdata = root / "AppData" / "Roaming"
+            environment = os.environ.copy()
+            environment["APPDATA"] = str(appdata)
+            environment["TEST_ARK_KEY"] = "private-test-key"
+            configured = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "ark",
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                ],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+            target = appdata / "WonderbellImagegen" / ".env"
+            self.assertTrue(target.is_file())
+            checked = subprocess.run(
+                [sys.executable, str(GENERATOR), "--check", "--prompt", "A teacup"],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn('"provider": "ark"', checked.stdout)
+
+    def test_windows_launcher_uses_hidden_powershell_prompt(self):
+        launcher = WINDOWS_LAUNCHER.read_text(encoding="utf-8")
+        setup = WINDOWS_SETUP.read_text(encoding="utf-8")
+        self.assertIn("powershell.exe", launcher)
+        self.assertNotIn("set /p", launcher.lower())
+        self.assertIn("Read-Host", setup)
+        self.assertIn("-AsSecureString", setup)
+        self.assertIn("$env:APPDATA", setup)
+        self.assertIn("SetAccessRuleProtection($true, $false)", setup)
+        self.assertNotIn("Codex", launcher + setup)
 
 
 if __name__ == "__main__":
