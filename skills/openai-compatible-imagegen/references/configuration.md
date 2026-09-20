@@ -1,12 +1,16 @@
 # Configuration
 
-The adapter targets APIs that follow the OpenAI Images API shape: bearer authentication, JSON requests for `/images/generations`, multipart form requests for `/images/edits`, and image results returned as base64 data or downloadable URLs.
+The adapter supports two profiles:
+
+- `openai-compatible`: bearer authentication, JSON requests for `/images/generations`, multipart form requests for `/images/edits`, and base64 or URL results.
+- `ark`: Volcengine Ark Seedream requests using JSON `/images/generations`, including Data URL reference images, and base64 or URL results.
 
 ## Environment
 
 Create a local `.env` outside Git, or export the variables in the process environment:
 
 ```dotenv
+IMAGEGEN_PROVIDER=openai-compatible
 IMAGEGEN_API_KEY=
 IMAGEGEN_BASE_URL=
 
@@ -22,6 +26,24 @@ IMAGEGEN_REFERENCE_FIELD=image[]
 
 The script uses `IMAGEGEN_*` values first and falls back to `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_IMAGE_MODEL`. Pass a non-default file with `--env-file /path/to/.env`.
 
+## One-step configuration
+
+For Ark Seedream, the configurator supplies the known base URL and model ID; the only hidden prompt is the Key:
+
+```bash
+python3 <skill-dir>/scripts/configure.py ark --env-file .env
+```
+
+For automation, place the Key in a temporary environment variable and name that variable without putting the Key on the command line:
+
+```bash
+python3 <skill-dir>/scripts/configure.py ark \
+  --api-key-env MY_PRIVATE_ARK_KEY \
+  --env-file .env
+```
+
+The configurator writes atomically, preserves unrelated entries, and changes the target file to mode `0600`. It does not copy a Key from another application or database automatically.
+
 ## Common commands
 
 Text-to-image check and execution:
@@ -34,7 +56,7 @@ python3 <skill-dir>/scripts/generate_image.py --execute \
   --prompt-file prompt.txt --name hero --output-dir generated-images
 ```
 
-Reference-image edit:
+Reference-image generation:
 
 ```bash
 python3 <skill-dir>/scripts/generate_image.py --execute \

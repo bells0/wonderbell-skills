@@ -27,6 +27,7 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "path": self.path,
                 "authorization": self.headers.get("Authorization"),
+                "idempotency_key": self.headers.get("Idempotency-Key"),
                 "content_type": self.headers.get("Content-Type"),
                 "body": body,
             }
@@ -61,6 +62,17 @@ class GenerateImageTests(unittest.TestCase):
         path.write_text(
             "IMAGEGEN_API_KEY=test-secret\n"
             f"IMAGEGEN_BASE_URL=http://127.0.0.1:{self.server.server_port}/v1\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def ark_env_file(self, root: Path) -> Path:
+        path = root / ".env.ark"
+        path.write_text(
+            "IMAGEGEN_PROVIDER=ark\n"
+            "IMAGEGEN_API_KEY=ark-test-secret\n"
+            f"IMAGEGEN_BASE_URL=http://127.0.0.1:{self.server.server_port}/api/v3\n"
+            "IMAGEGEN_MODEL=doubao-seedream-test\n",
             encoding="utf-8",
         )
         return path
@@ -149,6 +161,54 @@ class GenerateImageTests(unittest.TestCase):
             self.assertTrue(request["content_type"].startswith("multipart/form-data;"))
             self.assertIn(b'name="image[]"; filename="source.png"', request["body"])
             self.assertIn(PNG, request["body"])
+
+    def test_ark_reference_uses_generations_json_and_redacted_trace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = self.ark_env_file(root)
+            reference = root / "source.png"
+            reference.write_bytes(PNG)
+            output = root / "out"
+            result = self.run_script(
+                "--execute",
+                "--env-file",
+                str(env),
+                "--prompt",
+                "Keep the product structure exact",
+                "--reference",
+                str(reference),
+                "--size",
+                "1024x1024",
+                "--name",
+                "seedream",
+                "--output-dir",
+                str(output),
+                cwd=root,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            request = Handler.requests[0]
+            self.assertEqual(request["path"], "/api/v3/images/generations")
+            self.assertEqual(request["authorization"], "Bearer ark-test-secret")
+            self.assertTrue(request["idempotency_key"].startswith("imagegen-"))
+            self.assertEqual(request["content_type"], "application/json")
+            sent = json.loads(request["body"])
+            self.assertEqual(sent["model"], "doubao-seedream-test")
+            self.assertEqual(sent["size"], "1024x1024")
+            self.assertEqual(sent["response_format"], "b64_json")
+            self.assertEqual(sent["output_format"], "png")
+            self.assertFalse(sent["watermark"])
+            self.assertNotIn("n", sent)
+            self.assertEqual(len(sent["image"]), 1)
+            self.assertTrue(sent["image"][0].startswith("data:image/png;base64,"))
+
+            run_dir = next((output / "seedream").iterdir())
+            request_record = json.loads((run_dir / "request.json").read_text())
+            self.assertEqual(request_record["provider"], "ark")
+            self.assertEqual(
+                request_record["payload"]["image"],
+                ["<data-url omitted; see reference_images>"],
+            )
+            self.assertNotIn(base64.b64encode(PNG).decode(), (run_dir / "request.json").read_text())
 
 
 if __name__ == "__main__":

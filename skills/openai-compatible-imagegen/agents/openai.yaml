@@ -1,4 +1,4 @@
 interface:
   display_name: "OpenAI-Compatible ImageGen"
-  short_description: "Generate images through compatible APIs"
-  default_prompt: "Use $openai-compatible-imagegen to generate an image from my prompt and save a traceable local result."
+  short_description: "Generate with compatible APIs and Ark Seedream"
+  default_prompt: "Use $openai-compatible-imagegen to configure my provider and generate a traceable local image result."
