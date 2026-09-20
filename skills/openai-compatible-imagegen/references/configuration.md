@@ -54,11 +54,21 @@ The Python configurator writes atomically, preserves unrelated entries, and chan
 
 ## Agent compatibility
 
-The portable contract is this `SKILL.md` folder plus its local scripts. It does not call Codex-specific tools. Agents that implement the Agent Skills convention can load it directly; other agents can use it only if their product supports importing a skill folder or equivalent instructions. The generation script requires Python 3. On Windows, an agent should use `py -3` when available and fall back to `python`.
+The portable contract is this `SKILL.md` folder plus its local scripts. It does not call Codex-specific tools. Agents that implement the Agent Skills convention can load it directly; other agents can use it only if their product supports importing a skill folder or equivalent instructions. Windows generation uses built-in Windows PowerShell and needs no Python or Node.js. The Python adapter remains available for non-Windows systems and generic providers.
 
 ## Common commands
 
-Text-to-image check and execution:
+Windows text-to-image check and execution:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Check -PromptFile prompt.txt -Name hero
+
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Execute -PromptFile prompt.txt -Name hero -OutputDir generated-images
+```
+
+Non-Windows or generic-provider check and execution:
 
 ```bash
 <python> <skill-dir>/scripts/generate_image.py --check \
@@ -68,7 +78,15 @@ Text-to-image check and execution:
   --prompt-file prompt.txt --name hero --output-dir generated-images
 ```
 
-Reference-image generation:
+Windows reference-image generation:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Execute -PromptFile prompt.txt -Reference "C:\images\front.png|C:\images\detail.jpg" `
+  -Name product-scene -OutputDir generated-images
+```
+
+Non-Windows or generic-provider reference-image generation:
 
 ```bash
 <python> <skill-dir>/scripts/generate_image.py --execute \

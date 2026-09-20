@@ -19,32 +19,26 @@ For macOS, use `scripts/setup-seedream.command`. For other systems, run the guid
 python3 <skill-dir>/scripts/configure.py ark
 ```
 
-The setup writes a private per-user configuration that later runs find automatically. Never print, copy into prompts, commit, or return the Key. The generation adapter requires Python 3, but the agent—not the user—should select the available Windows launcher (`py -3` or `python`) and handle that dependency. Read [configuration.md](references/configuration.md) only for custom providers or advanced settings. For Ark protocol details, read [ark-seedream.md](references/ark-seedream.md).
+The setup writes a private per-user configuration that later runs find automatically. Never print, copy into prompts, commit, or return the Key. Read [configuration.md](references/configuration.md) only for custom providers or advanced settings. For Ark protocol details, read [ark-seedream.md](references/ark-seedream.md).
 
 ## Generate
 
 1. Ask what image the user wants. Confirm any reference images because they will be uploaded to the configured provider.
-2. Prepare the prompt and output path for the user. Do not make them assemble commands or configuration fields. Prefer `--prompt-file` so long prompts do not leak into shell history or process listings.
-3. Validate locally first. This does not call the provider:
+2. Prepare a prompt file and output path for the user. Do not make them assemble commands or configuration fields; a prompt file keeps long prompts out of process listings.
+3. On Windows, use the included PowerShell engine. It needs no Python, Node.js, package manager, or third-party runtime. Validate locally first; this does not call the provider:
 
 ```text
-<python> <skill-dir>/scripts/generate_image.py \
-  --check \
-  --prompt-file prompt.txt \
-  --name concept-01
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 -Check -PromptFile prompt.txt -Name concept-01
 ```
 
 4. Execute only when the current request authorizes the external generation and any reference-image upload. Setup, inspection, or dry-run requests do not authorize a paid call.
 
-```text
-<python> <skill-dir>/scripts/generate_image.py \
-  --execute \
-  --prompt-file prompt.txt \
-  --name concept-01 \
-  --output-dir generated-images
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Execute -PromptFile prompt.txt -Name concept-01 -OutputDir generated-images
 ```
 
-For image-to-image work, add one or more `--reference /absolute/path/to/image.png`. With `openai-compatible`, `--mode auto` selects the edits endpoint for references. With `ark`, references are encoded as Data URLs in the JSON `image` array and sent to `/images/generations`, matching Seedream's working protocol. Use `--model`, `--size`, `--quality`, `--n`, or `--extra-file` only when the selected provider supports them.
+For image-to-image work on Windows, add `-Reference C:\absolute\path\image.png`; join multiple paths with `|`. The PowerShell engine targets Ark Seedream. On non-Windows systems, use `scripts/generate_image.py` for Ark or the generic OpenAI-compatible profile. Ark references are encoded as Data URLs in the JSON `image` array and sent to `/images/generations`.
 
 ## Deliver
 

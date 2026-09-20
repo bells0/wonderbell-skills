@@ -14,6 +14,10 @@ GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate_image.py
 LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.command"
 WINDOWS_LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.cmd"
 WINDOWS_SETUP = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.ps1"
+WINDOWS_GENERATOR_LAUNCHER = (
+    Path(__file__).resolve().parents[1] / "scripts" / "generate-image.cmd"
+)
+WINDOWS_GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate-image.ps1"
 
 
 class ConfigureTests(unittest.TestCase):
@@ -212,6 +216,18 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn("$env:APPDATA", setup)
         self.assertIn("SetAccessRuleProtection($true, $false)", setup)
         self.assertNotIn("Codex", launcher + setup)
+
+    def test_windows_generation_has_no_python_dependency_and_redacts_inputs(self):
+        launcher = WINDOWS_GENERATOR_LAUNCHER.read_text(encoding="utf-8")
+        generator = WINDOWS_GENERATOR.read_text(encoding="utf-8")
+        self.assertIn("powershell.exe", launcher)
+        self.assertNotIn("python", (launcher + generator).lower())
+        self.assertIn("Invoke-RestMethod", generator)
+        self.assertIn('Authorization = "Bearer $apiKey"', generator)
+        self.assertIn('"Idempotency-Key" = $idempotencyKey', generator)
+        self.assertIn("<data-url omitted; see reference_images>", generator)
+        self.assertIn("<omitted after local image save>", generator)
+        self.assertIn("if ($Check)", generator)
 
 
 if __name__ == "__main__":

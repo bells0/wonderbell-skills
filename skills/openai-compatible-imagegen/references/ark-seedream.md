@@ -35,19 +35,18 @@ The current Ark profile supports one output per request. Use separate authorized
 
 ## Example
 
-```bash
-<python> <skill-dir>/scripts/generate_image.py --check \
-  --prompt-file prompt.txt \
-  --reference /absolute/path/product.png \
-  --size 1024x1024 \
-  --name seedream-product
+Windows, with no added runtime:
 
-<python> <skill-dir>/scripts/generate_image.py --execute \
-  --prompt-file prompt.txt \
-  --reference /absolute/path/product.png \
-  --size 1024x1024 \
-  --name seedream-product \
-  --output-dir generated-images
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Check -PromptFile prompt.txt -Reference C:\images\product.png `
+  -Size 1024x1024 -Name seedream-product
+
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <skill-dir>\scripts\generate-image.ps1 `
+  -Execute -PromptFile prompt.txt -Reference C:\images\product.png `
+  -Size 1024x1024 -Name seedream-product -OutputDir generated-images
 ```
+
+On non-Windows systems, use `scripts/generate_image.py` with the equivalent arguments.
 
 The check is local. Execution can consume quota and uploads the prompt and every reference image to Ark, so it requires authorization for that call.
