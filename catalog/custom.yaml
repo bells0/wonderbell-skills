@@ -6,3 +6,5 @@
   enabled: true
 - name: hatch-pet
   enabled: true
+- name: openai-compatible-imagegen
+  enabled: true

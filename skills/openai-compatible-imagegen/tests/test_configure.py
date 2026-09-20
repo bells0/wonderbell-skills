@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "configure.py"
+GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate_image.py"
+LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.command"
+WINDOWS_LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.cmd"
+WINDOWS_SETUP = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.ps1"
+WINDOWS_GENERATOR_LAUNCHER = (
+    Path(__file__).resolve().parents[1] / "scripts" / "generate-image.cmd"
+)
+WINDOWS_GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate-image.ps1"
+INSTALL_GUIDE = Path(__file__).resolve().parents[1] / "INSTALL.md"
+
+
+class ConfigureTests(unittest.TestCase):
+    def run_script(
+        self, *arguments: str, cwd: Path, extra_env: dict[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        environment.update(extra_env)
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), *arguments],
+            cwd=cwd,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_ark_preset_writes_private_env_without_echoing_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / ".env"
+            target.write_text("UNRELATED=value\nIMAGEGEN_TIMEOUT_SECONDS=240\n", encoding="utf-8")
+            result = self.run_script(
+                "ark",
+                "--env-file",
+                str(target),
+                "--api-key-env",
+                "TEST_ARK_KEY",
+                cwd=root,
+                extra_env={"TEST_ARK_KEY": "private-test-key"},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            content = target.read_text(encoding="utf-8")
+            self.assertIn("UNRELATED=value", content)
+            self.assertIn("IMAGEGEN_PROVIDER=ark", content)
+            self.assertIn("IMAGEGEN_API_KEY=private-test-key", content)
+            self.assertIn(
+                "IMAGEGEN_BASE_URL=https://ark.cn-beijing.volces.com/api/v3", content
+            )
+            self.assertIn("IMAGEGEN_MODEL=doubao-seedream-5-0-pro-260628", content)
+            self.assertIn("IMAGEGEN_TIMEOUT_SECONDS=240", content)
+            self.assertNotIn("private-test-key", result.stdout)
+            self.assertNotIn("private-test-key", result.stderr)
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+            check = subprocess.run(
+                [
+                    sys.executable,
+                    str(GENERATOR),
+                    "--check",
+                    "--env-file",
+                    str(target),
+                    "--prompt",
+                    "A ceramic cup",
+                ],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(check.returncode, 0, check.stderr)
+            self.assertIn('"provider": "ark"', check.stdout)
+
+    def test_keep_existing_key_does_not_duplicate_assignments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / ".env"
+            target.write_text(
+                "IMAGEGEN_API_KEY=existing-key\n"
+                "IMAGEGEN_PROVIDER=openai-compatible\n"
+                "IMAGEGEN_PROVIDER=stale-duplicate\n",
+                encoding="utf-8",
+            )
+            result = self.run_script(
+                "ark",
+                "--env-file",
+                str(target),
+                "--keep-existing-key",
+                cwd=root,
+                extra_env={},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            content = target.read_text(encoding="utf-8")
+            self.assertEqual(content.count("IMAGEGEN_PROVIDER="), 1)
+            self.assertEqual(content.count("IMAGEGEN_API_KEY="), 1)
+            self.assertIn("IMAGEGEN_API_KEY=existing-key", content)
+            self.assertNotIn("existing-key", result.stdout)
+
+    def test_default_user_config_is_found_automatically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_home = root / "config"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "XDG_CONFIG_HOME": str(config_home),
+                    "TEST_ARK_KEY": "private-test-key",
+                }
+            )
+            configured = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "ark",
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                ],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+            target = config_home / "wonderbell-imagegen" / ".env"
+            self.assertTrue(target.is_file())
+            checked = subprocess.run(
+                [sys.executable, str(GENERATOR), "--check", "--prompt", "A teacup"],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn('"provider": "ark"', checked.stdout)
+
+    def test_double_click_launcher_only_needs_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / ".env"
+            environment = os.environ.copy()
+            environment["TEST_ARK_KEY"] = "private-test-key"
+            result = subprocess.run(
+                [
+                    "/bin/zsh",
+                    str(LAUNCHER),
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                    "--env-file",
+                    str(target),
+                ],
+                cwd=root,
+                env=environment,
+                input="\n",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("配置完成", result.stdout)
+            self.assertNotIn("private-test-key", result.stdout + result.stderr)
+            self.assertTrue(target.is_file())
+
+    def test_windows_appdata_config_is_found_automatically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            appdata = root / "AppData" / "Roaming"
+            environment = os.environ.copy()
+            environment["APPDATA"] = str(appdata)
+            environment["TEST_ARK_KEY"] = "private-test-key"
+            configured = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "ark",
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                ],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+            target = appdata / "WonderbellImagegen" / ".env"
+            self.assertTrue(target.is_file())
+            checked = subprocess.run(
+                [sys.executable, str(GENERATOR), "--check", "--prompt", "A teacup"],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn('"provider": "ark"', checked.stdout)
+
+    def test_windows_launcher_uses_hidden_powershell_prompt(self):
+        launcher = WINDOWS_LAUNCHER.read_text(encoding="utf-8")
+        setup = WINDOWS_SETUP.read_text(encoding="utf-8")
+        self.assertIn("powershell.exe", launcher)
+        self.assertNotIn("set /p", launcher.lower())
+        self.assertIn("Read-Host", setup)
+        self.assertIn("-AsSecureString", setup)
+        self.assertIn("$env:APPDATA", setup)
+        self.assertIn("SetAccessRuleProtection($true, $false)", setup)
+        self.assertNotIn("Codex", launcher + setup)
+
+    def test_windows_generation_has_no_python_dependency_and_redacts_inputs(self):
+        launcher = WINDOWS_GENERATOR_LAUNCHER.read_text(encoding="utf-8")
+        generator = WINDOWS_GENERATOR.read_text(encoding="utf-8")
+        self.assertIn("powershell.exe", launcher)
+        self.assertNotIn("python", (launcher + generator).lower())
+        self.assertIn("Invoke-RestMethod", generator)
+        self.assertIn('Authorization = "Bearer $apiKey"', generator)
+        self.assertIn('"Idempotency-Key" = $idempotencyKey', generator)
+        self.assertIn("<data-url omitted; see reference_images>", generator)
+        self.assertIn("<omitted after local image save>", generator)
+        self.assertIn("if ($Check)", generator)
+
+    def test_installation_is_owned_by_the_receiving_agent(self):
+        guide = INSTALL_GUIDE.read_text(encoding="utf-8")
+        self.assertIn("receiving agent", guide)
+        self.assertIn("Do not transfer the installation work", guide)
+        self.assertIn("Never request, read, or echo the Key in chat", guide)
+        self.assertIn("without calling the provider or consuming quota", guide)
+
+
+if __name__ == "__main__":
+    unittest.main()

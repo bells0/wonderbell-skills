@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenAI-Compatible ImageGen"
+  short_description: "Zero-install Windows generation with Seedream"
+  default_prompt: "Use $openai-compatible-imagegen to set up Seedream simply, then generate the image I describe."
