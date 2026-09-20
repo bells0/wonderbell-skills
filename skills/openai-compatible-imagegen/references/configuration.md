@@ -54,7 +54,7 @@ The Python configurator writes atomically, preserves unrelated entries, and chan
 
 ## Agent compatibility
 
-The portable contract is this `SKILL.md` folder plus its local scripts. It does not call Codex-specific tools. Agents that implement the Agent Skills convention can load it directly; other agents can use it only if their product supports importing a skill folder or equivalent instructions. Windows generation uses built-in Windows PowerShell and needs no Python or Node.js. The Python adapter remains available for non-Windows systems and generic providers.
+The portable contract is this `SKILL.md` folder plus its local scripts. It does not call Codex-specific tools. The receiving agent must perform installation as described in [INSTALL.md](../INSTALL.md); the business user should not manage Skill directories or installation commands. Agents that implement the Agent Skills convention can load it directly; other agents can use it only if their product supports importing a skill folder or equivalent instructions. Windows generation uses built-in Windows PowerShell and needs no Python or Node.js. The Python adapter remains available for non-Windows systems and generic providers.
 
 ## Common commands
 

@@ -18,6 +18,7 @@ WINDOWS_GENERATOR_LAUNCHER = (
     Path(__file__).resolve().parents[1] / "scripts" / "generate-image.cmd"
 )
 WINDOWS_GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate-image.ps1"
+INSTALL_GUIDE = Path(__file__).resolve().parents[1] / "INSTALL.md"
 
 
 class ConfigureTests(unittest.TestCase):
@@ -228,6 +229,13 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn("<data-url omitted; see reference_images>", generator)
         self.assertIn("<omitted after local image save>", generator)
         self.assertIn("if ($Check)", generator)
+
+    def test_installation_is_owned_by_the_receiving_agent(self):
+        guide = INSTALL_GUIDE.read_text(encoding="utf-8")
+        self.assertIn("receiving agent", guide)
+        self.assertIn("Do not transfer the installation work", guide)
+        self.assertIn("Never request, read, or echo the Key in chat", guide)
+        self.assertIn("without calling the provider or consuming quota", guide)
 
 
 if __name__ == "__main__":

@@ -7,9 +7,13 @@ description: Generate or edit images through OpenAI-compatible Images APIs or Vo
 
 Generate an image through the user's configured provider and keep the result, request settings, and source-image fingerprints together in a local run directory. This skill uses ordinary `SKILL.md` instructions and local scripts; it does not depend on Codex-only APIs. An agent must support Agent Skills or be able to read this folder and run its scripts.
 
+## Installation ownership
+
+The receiving agent owns installation. If this folder is supplied as an uninstalled package, read [INSTALL.md](INSTALL.md), use the current agent product's supported Skill/import mechanism, and verify discovery. Do not ask a non-technical user to locate a Skills directory, copy files, run installation commands, or choose runtime dependencies.
+
 ## First-time setup
 
-Keep setup non-technical. Do not ask the user to paste a Key into chat or explain environment variables unless they ask.
+After the agent has installed the Skill, keep setup non-technical. Do not ask the user to paste a Key into chat or explain environment variables unless they ask.
 
 For a Windows user, direct them to double-click `scripts/setup-seedream.cmd`. It uses Windows PowerShell to supply the Ark URL and Seedream model automatically; the user only pastes the Key into the private hidden prompt once. When UI access is available, open the launcher for them instead of giving terminal instructions.
 
