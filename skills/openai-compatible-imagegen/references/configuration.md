@@ -28,10 +28,18 @@ The script uses `IMAGEGEN_*` values first and falls back to `OPENAI_API_KEY`, `O
 
 ## One-step configuration
 
-For Ark Seedream, the configurator supplies the known base URL and model ID; the only hidden prompt is the Key:
+For a non-technical macOS user, double-click:
+
+```text
+scripts/setup-seedream.command
+```
+
+The window asks only for the Key and confirms when setup is complete. The Key is hidden while pasted. The configuration is stored at `~/.config/wonderbell-imagegen/.env`, and later image-generation runs find it automatically.
+
+For other systems, the configurator supplies the known base URL and model ID; the only hidden prompt is the Key:
 
 ```bash
-python3 <skill-dir>/scripts/configure.py ark --env-file .env
+python3 <skill-dir>/scripts/configure.py ark
 ```
 
 For automation, place the Key in a temporary environment variable and name that variable without putting the Key on the command line:
@@ -42,7 +50,7 @@ python3 <skill-dir>/scripts/configure.py ark \
   --env-file .env
 ```
 
-The configurator writes atomically, preserves unrelated entries, and changes the target file to mode `0600`. It does not copy a Key from another application or database automatically.
+The configurator writes atomically, preserves unrelated entries, and changes the target file to mode `0600`. It does not copy a Key from another application or database automatically. Advanced users may still pass `--env-file` to choose another location.
 
 ## Common commands
 

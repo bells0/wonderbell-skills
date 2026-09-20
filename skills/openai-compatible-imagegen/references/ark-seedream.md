@@ -9,6 +9,8 @@ IMAGEGEN_MODEL=doubao-seedream-5-0-pro-260628
 IMAGEGEN_GENERATIONS_PATH=/images/generations
 ```
 
+Ordinary users do not need to edit these values. On macOS, double-click `scripts/setup-seedream.command`, paste the Key once, and wait for “配置完成”.
+
 The model ID is configurable because Ark deployments and entitlements can differ. Override it during setup when the user's current Ark console or working application uses another endpoint ID:
 
 ```bash

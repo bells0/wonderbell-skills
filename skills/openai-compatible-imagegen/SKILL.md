@@ -7,29 +7,24 @@ description: Generate or edit images through OpenAI-compatible Images APIs or Vo
 
 Generate an image through the user's configured provider and keep the result, request settings, and source-image fingerprints together in a local run directory. The included script uses only the Python standard library.
 
-## Configure
+## First-time setup
 
-Before the first run, read [configuration.md](references/configuration.md). For Ark or Seedream, also read [ark-seedream.md](references/ark-seedream.md). Reuse an existing configuration without asking the user to reveal the key. Never print, copy into prompts, commit, or return the key.
+Keep setup non-technical. Do not ask the user to paste a Key into chat or explain environment variables unless they ask.
 
-The minimum private configuration is:
+For a macOS user, direct them to double-click `scripts/setup-seedream.command`. It supplies the Ark URL and Seedream model automatically; the user only pastes the Key into the private hidden prompt once. When UI access is available, open the launcher for them instead of giving terminal instructions.
 
-```dotenv
-IMAGEGEN_API_KEY=your-key
-IMAGEGEN_BASE_URL=https://provider.example/v1
+For other systems, run this guided setup:
+
+```text
+python3 <skill-dir>/scripts/configure.py ark
 ```
 
-For one-step Ark setup, run the safe configurator and enter the Key at its hidden prompt:
-
-```bash
-python3 <skill-dir>/scripts/configure.py ark --env-file .env
-```
-
-It writes the Ark base URL and Seedream model preset automatically, preserves unrelated `.env` entries, never echoes the Key, and sets the file mode to `0600`. Users may instead copy [`.env.example`](.env.example) to a private working-directory `.env`. Set `IMAGEGEN_MODEL` when the provider requires an explicit image model. The script also accepts `OPENAI_API_KEY` and `OPENAI_BASE_URL` as fallbacks for the `openai-compatible` profile.
+The setup writes a private per-user configuration that later runs find automatically. Never print, copy into prompts, commit, or return the Key. Read [configuration.md](references/configuration.md) only for custom providers or advanced settings. For Ark protocol details, read [ark-seedream.md](references/ark-seedream.md).
 
 ## Generate
 
-1. Confirm the intended image, output location, and any reference images. Treat reference files as material that will be uploaded to the configured external provider.
-2. Put the final prompt in a UTF-8 text file. Prefer `--prompt-file` so long prompts do not leak into shell history or process listings.
+1. Ask what image the user wants. Confirm any reference images because they will be uploaded to the configured provider.
+2. Prepare the prompt and output path for the user. Do not make them assemble commands or configuration fields. Prefer `--prompt-file` so long prompts do not leak into shell history or process listings.
 3. Validate locally first. This does not call the provider:
 
 ```bash

@@ -11,6 +11,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "configure.py"
 GENERATOR = Path(__file__).resolve().parents[1] / "scripts" / "generate_image.py"
+LAUNCHER = Path(__file__).resolve().parents[1] / "scripts" / "setup-seedream.command"
 
 
 class ConfigureTests(unittest.TestCase):
@@ -97,6 +98,72 @@ class ConfigureTests(unittest.TestCase):
             self.assertEqual(content.count("IMAGEGEN_API_KEY="), 1)
             self.assertIn("IMAGEGEN_API_KEY=existing-key", content)
             self.assertNotIn("existing-key", result.stdout)
+
+    def test_default_user_config_is_found_automatically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_home = root / "config"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "XDG_CONFIG_HOME": str(config_home),
+                    "TEST_ARK_KEY": "private-test-key",
+                }
+            )
+            configured = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "ark",
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                ],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+            target = config_home / "wonderbell-imagegen" / ".env"
+            self.assertTrue(target.is_file())
+            checked = subprocess.run(
+                [sys.executable, str(GENERATOR), "--check", "--prompt", "A teacup"],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn('"provider": "ark"', checked.stdout)
+
+    def test_double_click_launcher_only_needs_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / ".env"
+            environment = os.environ.copy()
+            environment["TEST_ARK_KEY"] = "private-test-key"
+            result = subprocess.run(
+                [
+                    "/bin/zsh",
+                    str(LAUNCHER),
+                    "--api-key-env",
+                    "TEST_ARK_KEY",
+                    "--env-file",
+                    str(target),
+                ],
+                cwd=root,
+                env=environment,
+                input="\n",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("配置完成", result.stdout)
+            self.assertNotIn("private-test-key", result.stdout + result.stderr)
+            self.assertTrue(target.is_file())
 
 
 if __name__ == "__main__":

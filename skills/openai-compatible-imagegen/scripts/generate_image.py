@@ -32,6 +32,19 @@ class ImageGenError(RuntimeError):
     """Configuration, request, or response failure."""
 
 
+def default_env_file() -> Path:
+    configured_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(configured_home).expanduser() if configured_home else Path.home() / ".config"
+    return root / "wonderbell-imagegen" / ".env"
+
+
+def resolve_env_file(requested: Optional[Path]) -> Path:
+    if requested is not None:
+        return requested.expanduser().resolve()
+    local = Path(".env").resolve()
+    return local if local.is_file() else default_env_file().resolve()
+
+
 @dataclass(frozen=True)
 class Config:
     provider: str
@@ -66,7 +79,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--idempotency-key", help="Optional stable request key, mainly for Ark")
     parser.add_argument("--name", default="image", help="Safe label for the run directory")
     parser.add_argument("--output-dir", type=Path, default=Path("generated-images"))
-    parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Private config file; defaults to .env or the one-time user setup",
+    )
     return parser.parse_args()
 
 
@@ -134,16 +151,16 @@ def validate_endpoint_path(value: str, name: str) -> str:
 
 
 def load_config(path: Path) -> Config:
-    values = load_env_file(path.expanduser().resolve())
+    values = load_env_file(path)
     provider = setting(values, "IMAGEGEN_PROVIDER", default="openai-compatible")
     if provider not in {"openai-compatible", "ark"}:
         raise ImageGenError("IMAGEGEN_PROVIDER must be openai-compatible or ark")
     api_key = setting(values, "IMAGEGEN_API_KEY", "OPENAI_API_KEY")
     base_url = setting(values, "IMAGEGEN_BASE_URL", "OPENAI_BASE_URL")
-    if not api_key:
-        raise ImageGenError("IMAGEGEN_API_KEY (or OPENAI_API_KEY) is missing")
-    if not base_url:
-        raise ImageGenError("IMAGEGEN_BASE_URL (or OPENAI_BASE_URL) is missing")
+    if not api_key or not base_url:
+        raise ImageGenError(
+            "image generation is not configured; run setup-seedream.command once"
+        )
     reference_field = setting(values, "IMAGEGEN_REFERENCE_FIELD", default="image[]")
     if not SAFE_FIELD.fullmatch(reference_field):
         raise ImageGenError("IMAGEGEN_REFERENCE_FIELD contains unsupported characters")
@@ -468,7 +485,7 @@ def run() -> int:
     args = parse_args()
     if not SAFE_NAME.fullmatch(args.name):
         raise ImageGenError("--name must be 1-80 safe filename characters")
-    config = load_config(args.env_file)
+    config = load_config(resolve_env_file(args.env_file))
     prompt = read_prompt(args)
     references = resolve_references(args.reference)
     mode = resolve_mode(config.provider, args.mode, references)

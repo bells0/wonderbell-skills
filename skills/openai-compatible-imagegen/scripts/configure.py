@@ -31,6 +31,13 @@ PRESETS = {
 }
 
 
+def default_env_file() -> Path:
+    """Return one stable per-user config path without requiring shell setup."""
+    configured_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(configured_home).expanduser() if configured_home else Path.home() / ".config"
+    return root / "wonderbell-imagegen" / ".env"
+
+
 class ConfigureError(RuntimeError):
     """Configuration input or file update failure."""
 
@@ -40,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         description="Write a private .env for openai-compatible-imagegen without echoing the key."
     )
     parser.add_argument("profile", choices=tuple(PRESETS), help="Provider preset")
-    parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument("--env-file", type=Path, default=default_env_file())
     parser.add_argument("--base-url", help="Override the preset API root")
     parser.add_argument("--model", help="Override the preset model ID")
     parser.add_argument(
@@ -51,6 +58,11 @@ def parse_args() -> argparse.Namespace:
         "--keep-existing-key",
         action="store_true",
         help="Reuse a non-empty IMAGEGEN_API_KEY already in the target file",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable completion details",
     )
     return parser.parse_args()
 
@@ -107,7 +119,9 @@ def read_api_key(args: argparse.Namespace, existing: Dict[str, str]) -> str:
         return current
     suffix = " (press Enter to keep the existing key)" if current else ""
     try:
-        value = getpass.getpass(f"API key{suffix}: ")
+        value = getpass.getpass(
+            f"火山 Ark API Key（粘贴后不会显示，这是正常的）{suffix}: "
+        )
     except (EOFError, KeyboardInterrupt) as exc:
         raise ConfigureError("API key input was cancelled") from exc
     if not value and current:
@@ -189,21 +203,21 @@ def run() -> int:
         ) or "/images/generations",
     }
     atomic_write(path, merge_lines(lines, updates))
-    print(
-        json.dumps(
-            {
-                "status": "configured",
-                "env_file": str(path),
-                "provider": updates["IMAGEGEN_PROVIDER"],
-                "base_url": updates["IMAGEGEN_BASE_URL"],
-                "model": updates["IMAGEGEN_MODEL"],
-                "api_key": "configured",
-                "file_mode": "0600",
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    result = {
+        "status": "configured",
+        "env_file": str(path),
+        "provider": updates["IMAGEGEN_PROVIDER"],
+        "base_url": updates["IMAGEGEN_BASE_URL"],
+        "model": updates["IMAGEGEN_MODEL"],
+        "api_key": "configured",
+        "file_mode": "0600",
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print("\n配置完成。")
+        print("以后直接告诉 Codex 想生成什么图片即可。")
+        print(f"配置已安全保存在：{path}")
     return 0
 
 
