@@ -42,6 +42,7 @@ Codex can select these skills automatically from their trigger descriptions, or 
 | [`explore-with-variants`](skills/explore-with-variants/SKILL.md) | A design, naming, writing, layout, product, or concept task has several genuinely viable directions. | Produces meaningfully different options, explains what each optimizes for, and keeps the alternatives comparable before converging. |
 | [`maintain-skills-repo`](skills/maintain-skills-repo/SKILL.md) | This repository, its catalogs, local skill installation, drift audit, or monitoring rules need maintenance. | Routes repository work through the maintenance playbooks and scripts while keeping routine machine state out of Git. |
 | [`hatch-pet`](skills/hatch-pet/SKILL.md) | A Codex-compatible animated pet or mascot needs to be created, repaired, validated, visually reviewed, or packaged. | Provides deterministic sprite-atlas assembly, direction and animation QA, and Codex v2 pet packaging. |
+| [`yuque-local`](skills/yuque-local/SKILL.md) | A configured local Yuque connection needs to search, read, summarize, create, or update documents, knowledge bases, or their table of contents. | Reuses local MCP/CLI launchers, preserves Markdown/Lake behavior, and provides an MCP helper without bundling credentials or account-specific configuration. |
 
 ## External Skill Collections
 
