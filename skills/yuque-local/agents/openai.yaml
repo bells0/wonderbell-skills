@@ -1,0 +1,4 @@
+interface:
+  display_name: "语雀本地操作"
+  short_description: "通过本机 MCP 或 CLI 搜索、读取和维护语雀文档与知识库"
+  default_prompt: "使用 $yuque-local 搜索我的语雀，并按要求读取或更新指定文档。"
