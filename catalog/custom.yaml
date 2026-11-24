@@ -8,3 +8,5 @@
   enabled: true
 - name: yuque-local
   enabled: true
+- name: antigravity-agent-bridge
+  enabled: true
