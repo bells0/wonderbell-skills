@@ -1,0 +1,4 @@
+interface:
+  display_name: "Antigravity Agent Bridge"
+  short_description: "Coordinate Antigravity agents through the local CLI"
+  default_prompt: "Use $antigravity-agent-bridge to send a scoped task to an Antigravity conversation and collect its reply."
