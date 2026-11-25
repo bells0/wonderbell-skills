@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex 本地会话与侧栏恢复"
+  short_description: "切换登录账号后，读取本地已有会话与项目记录，恢复侧栏项目、分组和归属"
+  default_prompt: "使用 $codex-local-sidebar-recovery，以本机已有记录为准，恢复当前账号侧栏的会话、项目和 section，并读回确认。"
