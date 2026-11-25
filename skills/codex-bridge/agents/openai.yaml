@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Bridge"
+  short_description: "Read, search, and drive local Codex CLI/App sessions"
+  default_prompt: "Use $codex-bridge to inspect local Codex sessions or send a scoped follow-up prompt via the Codex CLI."
