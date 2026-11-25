@@ -10,3 +10,5 @@
   enabled: true
 - name: antigravity-agent-bridge
   enabled: true
+- name: codex-local-sidebar-recovery
+  enabled: true

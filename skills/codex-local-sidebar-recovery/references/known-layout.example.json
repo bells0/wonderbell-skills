@@ -1,0 +1,27 @@
+{
+  "sections": [
+    {
+      "name": "Pinned",
+      "reference_section_id": "pinned",
+      "members": [
+        {
+          "kind": "thread",
+          "host_id": "local",
+          "thread_id": "example-thread-id"
+        }
+      ]
+    },
+    {
+      "name": "Example section",
+      "reference_section_id": "example-section-id",
+      "members": [
+        {
+          "kind": "project",
+          "label": "example-project",
+          "primary_path": "/path/to/example-project",
+          "reference_project_id": "example-project-id"
+        }
+      ]
+    }
+  ]
+}
