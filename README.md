@@ -45,6 +45,7 @@ Codex can select these skills automatically from their trigger descriptions, or 
 | [`yuque-local`](skills/yuque-local/SKILL.md) | A configured local Yuque connection needs to search, read, summarize, create, or update documents, knowledge bases, or their table of contents. | Reuses local MCP/CLI launchers, preserves Markdown/Lake behavior, and provides an MCP helper without bundling credentials or account-specific configuration. |
 | [`antigravity-agent-bridge`](skills/antigravity-agent-bridge/SKILL.md) | Coordinate work with agents in a running local Antigravity App. | Finds projects and conversations, starts or messages an agent through the installed CLI, and collects new replies through the local service. See [scope and verification](docs/antigravity-agent-bridge.md). |
 | [`codex-local-sidebar-recovery`](skills/codex-local-sidebar-recovery/SKILL.md) | Existing Codex chats or projects are missing from the sidebar after switching accounts on the same machine. | Inspects local metadata and uses Codex's sidebar tools to restore verified project assignments, sections, and pins. |
+| [`codex-bridge`](skills/codex-bridge/SKILL.md) | Another agent (such as Antigravity) needs to read, search, or drive local OpenAI Codex CLI/App sessions. | Provides a zero-dependency Python CLI over `$CODEX_HOME` (`state_*.sqlite` + rollout JSONL) and `codex exec` / `codex exec resume`, auto-selecting the newest local Codex CLI and default model with `high` reasoning, read-only defaults, and writer-lock checks. |
 
 ## External Skill Collections
 
