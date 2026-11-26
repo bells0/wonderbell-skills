@@ -31,7 +31,7 @@ Read operations (`doctor`, `list`, `search`, `read`) require **no extra installa
 For `send` and `start`, the script resolves the CLI automatically in this order:
 1. `$WORKBUDDY_BRIDGE_BIN` (explicit override)
 2. Standalone `codebuddy` / `cbc` in `PATH` (`npm install -g @tencent-ai/codebuddy-code`)
-3. Bundled WorkBuddy Desktop CLI (`<WorkBuddy>/resources/app.asar.unpacked/cli/bin/codebuddy` + bundled Node + `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`)
+3. Bundled WorkBuddy Desktop CLI (`<WorkBuddy>/resources/app.asar.unpacked/cli/bin/codebuddy` + bundled Node + `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`; checks `$WORKBUDDY_APP_DIR` first, then standard Windows/macOS install locations)
 
 The script sets `CODEBUDDY_CONFIG_DIR=$WORKBUDDY_HOME` (and `CODEBUDDY_INTERNET_ENVIRONMENT=internal` by default, overridable via `--env`) so `--resume` reads and appends directly to WorkBuddy's own session transcripts under `~/.workbuddy/projects/`.
 

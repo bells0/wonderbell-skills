@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -175,6 +175,60 @@ def is_transcript_actively_writing(transcript_path: Path | None, window_sec: flo
     return etype is not None
 
 
+def scan_single_jsonl(path: Path) -> dict[str, Any] | None:
+    sid = path.stem
+    title = ""
+    cwd = ""
+    model = ""
+    created_at: Any = None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            for _ in range(40):
+                line = f.readline()
+                if not line:
+                    break
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not created_at and obj.get("timestamp"):
+                    created_at = obj.get("timestamp")
+                if not cwd and obj.get("cwd"):
+                    cwd = str(obj.get("cwd"))
+                if obj.get("type") == "ai-title" and obj.get("aiTitle"):
+                    title = str(obj.get("aiTitle"))
+                if obj.get("type") == "message" and not title and obj.get("role") == "user":
+                    t = clean_user_boilerplate(extract_content_text(obj.get("content")))
+                    if t:
+                        title = compact_one_line(t, 80)
+                pd = obj.get("providerData")
+                if isinstance(pd, dict) and not model:
+                    model = str(pd.get("requestModelId") or pd.get("model") or "")
+        stat = path.stat()
+    except OSError:
+        return None
+
+    active_write = is_transcript_actively_writing(path)
+    return {
+        "id": sid,
+        "cwd": cwd,
+        "title": title or path.stem,
+        "display_title": title or path.stem,
+        "status": "cli",
+        "created_at": created_at or int(stat.st_ctime * 1000),
+        "updated_at": int(stat.st_mtime * 1000),
+        "model": model or None,
+        "space_name": "",
+        "project_id": "",
+        "transcript_path": str(path),
+        "has_transcript": True,
+        "working": False,
+        "active_write": active_write,
+        "busy": active_write,
+        "deleted": False,
+    }
+
+
 def list_sessions_from_db(
     root: Path,
     include_deleted: bool = False,
@@ -206,6 +260,8 @@ def list_sessions_from_db(
                 usage_map[str(urow["session_id"])] = dict(urow)
         except sqlite3.Error:
             pass
+
+        all_db_ids = {str(r["id"]) for r in con.execute("SELECT id FROM sessions") if r["id"]}
 
         wanted = [
             "id",
@@ -267,6 +323,19 @@ def list_sessions_from_db(
                 item["tokens_used"] = usage_info.get("used")
                 item["context_size"] = usage_info.get("size")
             rows.append(item)
+
+        # Merge CLI-created (`start`) or forked (`send --fork`) JSONL sessions not yet in workbuddy.db
+        for sid, path in transcript_index.items():
+            if sid in all_db_ids:
+                continue
+            extra = scan_single_jsonl(path)
+            if extra is not None:
+                rows.append(extra)
+
+        rows.sort(
+            key=lambda r: to_epoch_seconds(r.get("updated_at") or r.get("last_activity_at") or r.get("created_at")),
+            reverse=True,
+        )
         return rows
     except sqlite3.Error:
         return None
@@ -283,59 +352,9 @@ def scan_sessions_from_files(root: Path) -> list[dict[str, Any]]:
 
     rows: list[dict[str, Any]] = []
     for path in files:
-        sid = path.stem
-        title = ""
-        cwd = ""
-        model = ""
-        created_at: Any = None
-        try:
-            with path.open("r", encoding="utf-8", errors="replace") as f:
-                for _ in range(40):
-                    line = f.readline()
-                    if not line:
-                        break
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not created_at and obj.get("timestamp"):
-                        created_at = obj.get("timestamp")
-                    if not cwd and obj.get("cwd"):
-                        cwd = str(obj.get("cwd"))
-                    if obj.get("type") == "ai-title" and obj.get("aiTitle"):
-                        title = str(obj.get("aiTitle"))
-                    if obj.get("type") == "message" and not title and obj.get("role") == "user":
-                        t = extract_content_text(obj.get("content"))
-                        if t:
-                            title = compact_one_line(t, 80)
-                    pd = obj.get("providerData")
-                    if isinstance(pd, dict) and not model:
-                        model = str(pd.get("requestModelId") or pd.get("model") or "")
-        except OSError:
-            continue
-
-        stat = path.stat()
-        active_write = is_transcript_actively_writing(path)
-        rows.append(
-            {
-                "id": sid,
-                "cwd": cwd,
-                "title": title or path.stem,
-                "display_title": title or path.stem,
-                "status": "unknown",
-                "created_at": created_at or int(stat.st_ctime * 1000),
-                "updated_at": int(stat.st_mtime * 1000),
-                "model": model or None,
-                "space_name": "",
-                "project_id": "",
-                "transcript_path": str(path),
-                "has_transcript": True,
-                "working": False,
-                "active_write": active_write,
-                "busy": active_write,
-                "deleted": False,
-            }
-        )
+        item = scan_single_jsonl(path)
+        if item is not None:
+            rows.append(item)
     return rows
 
 
@@ -413,28 +432,39 @@ def resolve_session(
         raise SystemExit("Specify a session id/prefix/title or pass --last.")
 
     target_lower = target.lower()
-    # 1. Exact ID match
+    active_rows = [r for r in rows if not r.get("deleted")]
+    scoped_active = filter_sessions(active_rows, cwd=cwd, space=space)
+
+    # 1. Exact ID match (allows resolving even soft-deleted sessions when given exact UUID)
     for r in rows:
         if str(r.get("id", "")).lower() == target_lower:
             return r
-    # 2. Exact title / custom_title match
+    # 2. Exact title / custom_title match (respects active status + cwd/space filters)
     exact_titles = [
         r
-        for r in rows
+        for r in scoped_active
         if str(r.get("display_title") or "").lower() == target_lower
         or str(r.get("title") or "").lower() == target_lower
     ]
     if len(exact_titles) == 1:
         return exact_titles[0]
-    # 3. ID prefix match
-    prefix_matches = [r for r in rows if str(r.get("id", "")).lower().startswith(target_lower)]
+    if len(exact_titles) > 1:
+        preview = "\n".join(
+            f"  - {r['id']}  [{fmt_ts(r.get('updated_at'))}]  {compact_one_line(str(r.get('display_title', '')), 70)}"
+            for r in exact_titles[:8]
+        )
+        raise SystemExit(f"Multiple active sessions matched title '{target}'. Please specify an exact session ID:\n{preview}")
+    # 3. ID prefix match (prefer scoped active rows; fall back to all rows if none active)
+    prefix_matches = [r for r in scoped_active if str(r.get("id", "")).lower().startswith(target_lower)]
+    if not prefix_matches:
+        prefix_matches = [r for r in rows if str(r.get("id", "")).lower().startswith(target_lower)]
     if len(prefix_matches) == 1:
         return prefix_matches[0]
     if len(prefix_matches) > 1:
         ids = ", ".join(str(r["id"]) for r in prefix_matches[:5])
         raise SystemExit(f"Ambiguous session prefix '{target}'. Matches: {ids}")
-    # 4. Substring match on title/cwd/space
-    sub_matches = filter_sessions(rows, cwd=cwd, space=space, query=target)
+    # 4. Substring match on title/cwd/space (active sessions only)
+    sub_matches = filter_sessions(scoped_active, query=target)
     if len(sub_matches) == 1:
         return sub_matches[0]
     if len(sub_matches) > 1:
@@ -640,27 +670,25 @@ def find_bundled_node(root: Path) -> str | None:
 
 
 def find_bundled_workbuddy_cli() -> Path | None:
+    bases: list[Path] = []
     env_app = os.environ.get("WORKBUDDY_APP_DIR")
-    candidates: list[Path] = []
     if env_app:
-        candidates.append(Path(env_app).expanduser() / "resources" / "app.asar.unpacked" / "cli" / "bin" / "codebuddy")
+        bases.append(Path(env_app).expanduser())
 
-    # Standard install paths on Windows / macOS
-    local_app = os.environ.get("LOCALAPPDATA", "")
-    prog_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    for base in (
-        Path(r"D:\workbuddy"),
-        Path(r"C:\workbuddy"),
-        Path(prog_files) / "WorkBuddy",
-        Path(local_app) / "Programs" / "WorkBuddy" if local_app else Path("__none__"),
-        Path("/Applications/WorkBuddy.app/Contents"),
-    ):
-        candidates.append(base / "resources" / "app.asar.unpacked" / "cli" / "bin" / "codebuddy")
-        candidates.append(base / "Resources" / "app.asar.unpacked" / "cli" / "bin" / "codebuddy")
+    # Standard OS install paths on Windows / macOS
+    local_app = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app:
+        bases.append(Path(local_app) / "Programs" / "WorkBuddy")
+    prog_files = os.environ.get("ProgramFiles", "").strip()
+    if prog_files:
+        bases.append(Path(prog_files) / "WorkBuddy")
+    bases.append(Path("/Applications/WorkBuddy.app/Contents"))
 
-    for cand in candidates:
-        if cand.is_file():
-            return cand
+    for base in bases:
+        for res_dir in ("resources", "Resources"):
+            cand = base / res_dir / "app.asar.unpacked" / "cli" / "bin" / "codebuddy"
+            if cand.is_file():
+                return cand
     return None
 
 
@@ -759,6 +787,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "CODEBUDDY_CONFIG_DIR": os.environ.get("CODEBUDDY_CONFIG_DIR") or "",
     }
 
+    if not cli_info.get("available"):
+        send_ready_hint = (
+            "CLI not found; install `@tencent-ai/codebuddy-code` or set WORKBUDDY_APP_DIR / WORKBUDDY_BRIDGE_BIN."
+        )
+    elif auth_env["CODEBUDDY_API_KEY"] or auth_env["CODEBUDDY_AUTH_TOKEN"]:
+        send_ready_hint = "Ready via env credentials"
+    elif cli_info.get("mode") == "standalone":
+        send_ready_hint = (
+            f"Standalone CLI found; ensure `/login` has been completed with CODEBUDDY_CONFIG_DIR={root}"
+        )
+    elif cli_info.get("mode") == "override":
+        send_ready_hint = (
+            f"Custom CLI override configured ({cli_info['path']}); ensure it is authenticated for CODEBUDDY_CONFIG_DIR={root}"
+        )
+    else:
+        send_ready_hint = (
+            "Bundled lite-wb CLI has no TUI /login; set CODEBUDDY_API_KEY "
+            f"(or install `@tencent-ai/codebuddy-code` and run `/login` with CODEBUDDY_CONFIG_DIR={root})"
+        )
+
     report = {
         "workbuddy_home": str(root),
         "home_exists": root.is_dir(),
@@ -769,17 +817,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "cli": cli_info,
         "auth_env": auth_env,
         "read_ready": root.is_dir() and (db_path.is_file() or len(rows) > 0),
-        "send_ready_hint": (
-            "Ready via env credentials"
-            if (auth_env["CODEBUDDY_API_KEY"] or auth_env["CODEBUDDY_AUTH_TOKEN"])
-            else (
-                "Standalone CLI found; ensure `/login` has been completed with CODEBUDDY_CONFIG_DIR=" + str(root)
-                if cli_info.get("mode") == "standalone"
-                else "Bundled lite-wb CLI has no TUI /login; set CODEBUDDY_API_KEY (or install `@tencent-ai/codebuddy-code` and run `/login` with CODEBUDDY_CONFIG_DIR="
-                + str(root)
-                + ")"
-            )
-        ),
+        "send_ready_hint": send_ready_hint,
     }
 
     if args.json:
@@ -1012,17 +1050,25 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 def read_prompt(prompt_arg: str | None, prompt_file: str | None) -> str:
     if prompt_file:
-        return Path(prompt_file).expanduser().read_text(encoding="utf-8")
-    if prompt_arg == "-":
-        return sys.stdin.read()
-    if prompt_arg:
-        return prompt_arg
-    raise SystemExit("Provide a prompt argument, '-' for stdin, or --prompt-file.")
+        p = Path(prompt_file).expanduser()
+        if not p.is_file():
+            raise SystemExit(f"Prompt file does not exist: {prompt_file}")
+        text = p.read_text(encoding="utf-8")
+    elif prompt_arg == "-":
+        text = sys.stdin.read()
+    elif prompt_arg:
+        text = prompt_arg
+    else:
+        raise SystemExit("Provide a prompt argument, '-' for stdin, or --prompt-file.")
+    if not text.strip():
+        raise SystemExit("Prompt must not be empty.")
+    return text
 
 
 def apply_mode_flags(cmd: list[str], mode: str, explicit_tools: str | None) -> None:
     if mode == "text-only":
-        cmd.extend(["--tools", ""])
+        if explicit_tools is None:
+            cmd.extend(["--tools", ""])
     elif mode == "read-only":
         cmd.extend(["--permission-mode", "plan"])
     elif mode == "edit":
@@ -1032,6 +1078,36 @@ def apply_mode_flags(cmd: list[str], mode: str, explicit_tools: str | None) -> N
 
     if explicit_tools is not None:
         cmd.extend(["--tools", explicit_tools])
+
+
+def configure_cli_env(
+    root: Path,
+    runner: dict[str, Any],
+    use_default_config_dir: bool = False,
+    internet_env: str | None = None,
+) -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(runner.get("env_extra") or {})
+    if use_default_config_dir:
+        env.pop("CODEBUDDY_CONFIG_DIR", None)
+    else:
+        env.setdefault("CODEBUDDY_CONFIG_DIR", str(root))
+
+    if internet_env == "auto":
+        env.pop("CODEBUDDY_INTERNET_ENVIRONMENT", None)
+    elif internet_env is not None:
+        env["CODEBUDDY_INTERNET_ENVIRONMENT"] = internet_env
+    else:
+        env.setdefault("CODEBUDDY_INTERNET_ENVIRONMENT", "internal")
+
+    env.setdefault("CODEBUDDY_SESSION_HISTORY_CLEANUP", "0")
+    return env
+
+
+def format_cmd_display(cmd: list[str]) -> str:
+    if os.name == "nt":
+        return subprocess.list2cmdline(cmd)
+    return shlex.join(cmd)
 
 
 def parse_cli_json_output(stdout_text: str) -> dict[str, Any]:
@@ -1101,15 +1177,14 @@ def run_codebuddy_cli(
     output_file: str | None,
     exec_cwd: str | None = None,
     use_default_config_dir: bool = False,
-    internet_env: str = "internal",
+    internet_env: str | None = None,
 ) -> int:
-    env = os.environ.copy()
-    env.update(runner.get("env_extra") or {})
-    if not use_default_config_dir and not env.get("CODEBUDDY_CONFIG_DIR"):
-        env["CODEBUDDY_CONFIG_DIR"] = str(root)
-    if internet_env and internet_env != "auto" and not env.get("CODEBUDDY_INTERNET_ENVIRONMENT"):
-        env["CODEBUDDY_INTERNET_ENVIRONMENT"] = internet_env
-    env.setdefault("CODEBUDDY_SESSION_HISTORY_CLEANUP", "0")
+    env = configure_cli_env(
+        root,
+        runner,
+        use_default_config_dir=use_default_config_dir,
+        internet_env=internet_env,
+    )
 
     full_cmd = runner["cmd_prefix"] + cli_args
 
@@ -1131,7 +1206,7 @@ def run_codebuddy_cli(
             print("CONFIG   :", payload["config_dir"])
             print("ENV      :", payload["internet_env"])
             print("EXEC CWD :", payload["exec_cwd"])
-            print("DRY RUN  :", " ".join(full_cmd))
+            print("DRY RUN  :", format_cmd_display(full_cmd))
             print("PROMPT   :", compact_one_line(prompt, 200))
         return 0
 
@@ -1207,18 +1282,18 @@ def cmd_login(args: argparse.Namespace) -> int:
     root = workbuddy_home()
     runner = resolve_cli_runner(root)
     if runner["mode"] == "bundled-lite-wb":
+        npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
         raise SystemExit(
             "Interactive `/login` requires standalone `@tencent-ai/codebuddy-code` CLI "
             "(bundled WorkBuddy lite-wb has no TUI).\n"
-            "Install it with: npm.cmd install -g @tencent-ai/codebuddy-code"
+            f"Install it with: {npm_cmd} install -g @tencent-ai/codebuddy-code"
         )
-    env = os.environ.copy()
-    env.update(runner.get("env_extra") or {})
-    if not args.use_codebuddy_home:
-        env["CODEBUDDY_CONFIG_DIR"] = str(root)
-    if args.env and args.env != "auto":
-        env["CODEBUDDY_INTERNET_ENVIRONMENT"] = args.env
-    env.setdefault("CODEBUDDY_SESSION_HISTORY_CLEANUP", "0")
+    env = configure_cli_env(
+        root,
+        runner,
+        use_default_config_dir=args.use_codebuddy_home,
+        internet_env=args.env,
+    )
 
     print(f"Launching interactive CodeBuddy CLI ({runner['display_path']})...")
     print(f"  CODEBUDDY_CONFIG_DIR           = {env.get('CODEBUDDY_CONFIG_DIR', '(default ~/.codebuddy)')}")
@@ -1277,7 +1352,10 @@ def cmd_send(args: argparse.Namespace) -> int:
     exec_cwd = None
     session_cwd = str(session.get("cwd") or "").strip()
     if args.exec_cwd:
-        exec_cwd = str(Path(args.exec_cwd).expanduser())
+        cwd_path = Path(args.exec_cwd).expanduser()
+        if not cwd_path.is_dir():
+            raise SystemExit(f"--exec-cwd directory does not exist: {args.exec_cwd}")
+        exec_cwd = str(cwd_path)
     elif session_cwd and Path(session_cwd).is_dir():
         exec_cwd = session_cwd
 
@@ -1313,7 +1391,12 @@ def cmd_start(args: argparse.Namespace) -> int:
     for extra_dir in args.add_dir or []:
         cli_args.extend(["--add-dir", str(Path(extra_dir).expanduser())])
 
-    exec_cwd = str(Path(args.cwd).expanduser()) if args.cwd else None
+    exec_cwd = None
+    if args.cwd:
+        cwd_path = Path(args.cwd).expanduser()
+        if not cwd_path.is_dir():
+            raise SystemExit(f"--cwd directory does not exist: {args.cwd}")
+        exec_cwd = str(cwd_path)
 
     return run_codebuddy_cli(
         root,
@@ -1338,7 +1421,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_doc.set_defaults(func=cmd_doctor)
 
     p_login = sub.add_parser("login", help="Launch interactive CodeBuddy CLI configured for WorkBuddy home to perform /login.")
-    p_login.add_argument("--env", choices=["internal", "external", "auto"], default="internal", help="Account region (default: internal for CN).")
+    p_login.add_argument("--env", choices=["internal", "external", "auto"], default=None, help="Account region (defaults to $CODEBUDDY_INTERNET_ENVIRONMENT or internal for CN).")
     p_login.add_argument("--use-codebuddy-home", action="store_true", help="Store login in ~/.codebuddy instead of ~/.workbuddy.")
     p_login.set_defaults(func=cmd_login)
 
@@ -1401,8 +1484,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_send.add_argument("--add-dir", action="append", help="Additional directory to grant tool access to.")
     p_send.add_argument("--fork", action="store_true", help="Pass --fork-session to branch without mutating the original session.")
     p_send.add_argument("--force", action="store_true", help="Send even if session appears busy.")
-    p_send.add_argument("--use-codebuddy-home", action="store_true", help="Do not set CODEBUDDY_CONFIG_DIR to ~/.workbuddy.")
-    p_send.add_argument("--env", choices=["internal", "external", "auto"], default="internal", help="Account region (default: internal for CN).")
+    p_send.add_argument("--use-codebuddy-home", action="store_true", help="Clear CODEBUDDY_CONFIG_DIR and use default ~/.codebuddy.")
+    p_send.add_argument("--env", choices=["internal", "external", "auto"], default=None, help="Account region (defaults to $CODEBUDDY_INTERNET_ENVIRONMENT or internal for CN).")
     p_send.add_argument("-o", "--output-file", help="Save final reply text to file.")
     p_send.add_argument("--dry-run", action="store_true", help="Print command without invoking CLI.")
     p_send.add_argument("--json", action="store_true", help="Output JSON.")
@@ -1424,8 +1507,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--max-turns", type=int, help="Limit maximum agentic turns.")
     p_start.add_argument("--add-dir", action="append", help="Additional directory to grant tool access to.")
     p_start.add_argument("--ephemeral", action="store_true", help="Do not persist session files to disk.")
-    p_start.add_argument("--use-codebuddy-home", action="store_true", help="Do not set CODEBUDDY_CONFIG_DIR to ~/.workbuddy.")
-    p_start.add_argument("--env", choices=["internal", "external", "auto"], default="internal", help="Account region (default: internal for CN).")
+    p_start.add_argument("--use-codebuddy-home", action="store_true", help="Clear CODEBUDDY_CONFIG_DIR and use default ~/.codebuddy.")
+    p_start.add_argument("--env", choices=["internal", "external", "auto"], default=None, help="Account region (defaults to $CODEBUDDY_INTERNET_ENVIRONMENT or internal for CN).")
     p_start.add_argument("-o", "--output-file", help="Save final reply text to file.")
     p_start.add_argument("--dry-run", action="store_true", help="Print command without invoking CLI.")
     p_start.add_argument("--json", action="store_true", help="Output JSON.")
