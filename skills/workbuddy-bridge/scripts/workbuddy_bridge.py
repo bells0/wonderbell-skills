@@ -454,10 +454,8 @@ def resolve_session(
             for r in exact_titles[:8]
         )
         raise SystemExit(f"Multiple active sessions matched title '{target}'. Please specify an exact session ID:\n{preview}")
-    # 3. ID prefix match (prefer scoped active rows; fall back to all rows if none active)
+    # 3. ID prefix match (active sessions within the requested scope only)
     prefix_matches = [r for r in scoped_active if str(r.get("id", "")).lower().startswith(target_lower)]
-    if not prefix_matches:
-        prefix_matches = [r for r in rows if str(r.get("id", "")).lower().startswith(target_lower)]
     if len(prefix_matches) == 1:
         return prefix_matches[0]
     if len(prefix_matches) > 1:
