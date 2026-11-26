@@ -14,3 +14,5 @@
   enabled: true
 - name: codex-bridge
   enabled: true
+- name: workbuddy-bridge
+  enabled: true
