@@ -1,0 +1,4 @@
+interface:
+  display_name: "WorkBuddy Bridge"
+  short_description: "Read, search, and drive local Tencent WorkBuddy / CodeBuddy sessions"
+  default_prompt: "Use $workbuddy-bridge to inspect local WorkBuddy sessions or send a scoped follow-up prompt via the CodeBuddy CLI."
