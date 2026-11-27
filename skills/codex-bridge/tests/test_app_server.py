@@ -78,6 +78,53 @@ class AppServerTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("name rejected", " ".join(data["errors"]))
 
+    def test_mapped_project_root_kept_for_turn_start(self):
+        events = [
+            reply(1),
+            reply(2, thread={"id": "main"}),
+            reply(3, turn={"id": "current"}),
+            message("main", "current", "ok"),
+            completed("main", "current", "completed"),
+            reply(4),
+        ]
+        sent_lines = []
+
+        class RecordingStdin(io.StringIO):
+            def write(self, s):
+                sent_lines.append(s)
+                return super().write(s)
+
+        process = Mock(
+            stdin=RecordingStdin(),
+            stdout=io.StringIO("".join(json.dumps(event) + "\n" for event in events)),
+            stderr=io.StringIO(),
+        )
+        output = io.StringIO()
+        args = codex_bridge.build_parser().parse_args([
+            "start",
+            "hello",
+            "-C",
+            r"D:\GitProjects\wonderbell-skills",
+            "--json",
+        ])
+        with (
+            patch.object(codex_bridge, "ensure_codex_binary", return_value="codex"),
+            patch.object(codex_bridge, "resolve_default_model", return_value="gpt-test"),
+            patch.object(
+                codex_bridge,
+                "resolve_client_project_cwd",
+                return_value=(r"D:\GitProjects", r"D:\GitProjects\wonderbell-skills", {"id": "p1", "name": "GitProjects", "path": r"D:\GitProjects"}),
+            ),
+            patch.object(codex_bridge.subprocess, "Popen", return_value=process),
+            redirect_stdout(output),
+        ):
+            code = codex_bridge.cmd_start(args)
+        self.assertEqual(code, 0)
+        sent = [json.loads(line) for line in "".join(sent_lines).splitlines() if line.strip()]
+        by_method = {m["method"]: m.get("params") for m in sent if "method" in m}
+        self.assertEqual(by_method["thread/start"]["cwd"], r"D:\GitProjects")
+        self.assertEqual(by_method["turn/start"]["cwd"], r"D:\GitProjects")
+
 
 if __name__ == "__main__":
     unittest.main()

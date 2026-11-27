@@ -1101,10 +1101,10 @@ def resolve_client_project_cwd(
     match_project_root: bool = True,
 ) -> tuple[str, str, dict[str, Any] | None]:
     """
-    Resolve (thread_cwd, turn_cwd, matched_project).
+    Resolve (thread_cwd, requested_cwd, matched_project).
     If match_project_root is True and requested_cwd is inside a registered Codex project root,
     thread_cwd is mapped to the deepest matching registered root so Codex Desktop displays the
-    thread under that project in the sidebar, while turn_cwd preserves the requested directory.
+    thread under that project in the sidebar without turn/start overwriting threads.cwd.
     """
     raw = normalize_windows_path(requested_cwd) if requested_cwd else os.getcwd()
     req_path = Path(raw).expanduser()
@@ -1616,23 +1616,30 @@ def cmd_start(args: argparse.Namespace) -> int:
     reasoning_effort = args.reasoning_effort
 
     if args.via == "app-server":
-        thread_cwd, turn_cwd, matched_project = resolve_client_project_cwd(
+        thread_cwd, requested_cwd, matched_project = resolve_client_project_cwd(
             root,
             args.cwd,
             match_project_root=not args.exact_cwd,
         )
-        if not args.json and not args.exact_cwd and matched_project is None:
-            print(
-                f"Note: '{thread_cwd}' is not in Codex Desktop's registered project roots; "
-                "add that folder in Codex Desktop to view the thread in the sidebar.",
-                file=sys.stderr,
-            )
+        if not args.json and not args.exact_cwd:
+            if matched_project is None:
+                print(
+                    f"Note: '{thread_cwd}' is not in Codex Desktop's registered project roots; "
+                    "add that folder in Codex Desktop to view the thread in the sidebar.",
+                    file=sys.stderr,
+                )
+            elif os.path.normcase(os.path.normpath(requested_cwd)) != os.path.normcase(os.path.normpath(thread_cwd)):
+                print(
+                    f"Note: mapped cwd '{requested_cwd}' to registered Codex project root '{thread_cwd}' "
+                    "so the thread stays visible in Codex Desktop (use --exact-cwd to keep the subdirectory).",
+                    file=sys.stderr,
+                )
         return run_codex_app_server(
             codex_bin,
             "start",
             prompt,
             thread_cwd=thread_cwd,
-            turn_cwd=turn_cwd,
+            turn_cwd=thread_cwd,
             sandbox=args.sandbox,
             model=model,
             reasoning_effort=reasoning_effort,
