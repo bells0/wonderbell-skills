@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import fcntl
+import errno
 import glob
 import json
 import os
@@ -20,8 +20,25 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+from collections import deque
 from pathlib import Path
 from typing import Any
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11
+    tomllib = None
+
+try:
+    import fcntl  # type: ignore[import-not-found]
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt  # type: ignore[import-not-found]
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
 
 
 BOILERPLATE_PREFIXES = (
@@ -82,13 +99,28 @@ def is_writer_locked(root: Path, session_id: str) -> bool:
     fd = None
     try:
         fd = os.open(str(lock_path), os.O_RDWR)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.flock(fd, fcntl.LOCK_UN)
-            return False
-        except BlockingIOError:
+        if fcntl is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                return False
+            except BlockingIOError:
+                return True
+        if msvcrt is not None:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                return False
+            except OSError as exc:
+                if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK) or getattr(exc, "winerror", None) in (32, 33):
+                    return True
+                return False
+        return False
+    except PermissionError:
+        return True
+    except OSError as exc:
+        if getattr(exc, "winerror", None) in (32, 33):
             return True
-    except OSError:
         return False
     finally:
         if fd is not None:
@@ -161,7 +193,7 @@ def list_sessions_from_db(
     if db_path is None:
         return None
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
         con.row_factory = sqlite3.Row
     except sqlite3.Error:
         return None
@@ -747,21 +779,28 @@ def read_prompt(prompt_arg: str | None, prompt_file: str | None) -> str:
     raise SystemExit("Provide a prompt argument, '-' for stdin, or --prompt-file.")
 
 
-def parse_codex_version(binary: str) -> tuple[int, int, int, int, int]:
+def parse_codex_version(binary: str) -> tuple[int, int, int, int, tuple[int, ...]]:
     """Return comparable version tuple for a codex CLI binary (higher is newer)."""
     try:
-        proc = subprocess.run([binary, "--version"], text=True, capture_output=True, timeout=5)
+        proc = subprocess.run(
+            [binary, "--version"],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=5,
+        )
         text = (proc.stdout or "") + "\n" + (proc.stderr or "")
     except Exception:
-        return (0, 0, 0, 0, 0)
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-(?:alpha|beta|rc)\.?(\d+))?", text)
+        return (0, 0, 0, 0, ())
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.?(\d+(?:\.\d+)*))?", text)
     if not m:
-        return (0, 0, 0, 0, 0)
+        return (0, 0, 0, 0, ())
     major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
     # Stable release (no pre-release suffix) ranks above pre-release of same x.y.z
-    if m.group(4) is None:
-        return (major, minor, patch, 1, 0)
-    return (major, minor, patch, 0, int(m.group(4)))
+    stage = {"alpha": 0, "beta": 1, "rc": 2, None: 3}[m.group(4)]
+    revision = tuple(map(int, m.group(5).split("."))) if m.group(5) else ()
+    return (major, minor, patch, stage, revision)
 
 
 def ensure_codex_binary() -> str:
@@ -769,24 +808,53 @@ def ensure_codex_binary() -> str:
     if override:
         p = Path(override).expanduser()
         if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
+            return str(p.resolve())
         raise SystemExit(f"CODEX_BRIDGE_BIN is not an executable file: {override}")
 
     candidates: list[str] = []
-    for fixed in (
-        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-        "/Applications/Codex.app/Contents/Resources/codex",
-        "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-    ):
-        if Path(fixed).is_file() and os.access(fixed, os.X_OK):
+    fixed_paths: list[str] = []
+    if sys.platform == "darwin":
+        fixed_paths.extend((
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        ))
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            fixed_paths.append(str(Path(local_app_data) / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"))
+        fixed_paths.append(str(Path.home() / "AppData" / "Local" / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"))
+        prog_roots = []
+        for env_key in ("ProgramFiles", "ProgramW6432"):
+            val = os.environ.get(env_key)
+            if val and val not in prog_roots:
+                prog_roots.append(val)
+        for prog_root in prog_roots:
+            for rel in (
+                r"WindowsApps\OpenAI.Codex_*\app\resources\codex.exe",
+                r"WindowsApps\OpenAI.Codex_*\app\resources\bin\codex.exe",
+            ):
+                for match in glob.glob(str(Path(prog_root) / rel)):
+                    if match not in fixed_paths:
+                        fixed_paths.append(match)
+        # On older Windows Python versions shutil.which implicitly searches the
+        # current project first. Only probe installations on explicit PATH roots.
+        for entry in os.get_exec_path():
+            directory = Path(entry.strip('"'))
+            if directory.is_absolute():
+                for name in ("codex.exe", "codex.cmd", "codex.bat"):
+                    fixed_paths.append(str(directory / name))
+    else:
+        which_bin = shutil.which("codex")
+        if which_bin:
+            fixed_paths.append(which_bin)
+
+    for fixed in fixed_paths:
+        if fixed not in candidates and Path(fixed).is_file() and os.access(fixed, os.X_OK):
             candidates.append(fixed)
 
-    which_bin = shutil.which("codex")
-    if which_bin and which_bin not in candidates:
-        candidates.append(which_bin)
-
     if not candidates:
-        raise SystemExit("`codex` binary not found in PATH or known macOS app bundles.")
+        raise SystemExit("Codex binary not found on PATH or in known installation directories.")
 
     if len(candidates) == 1:
         return candidates[0]
@@ -796,7 +864,26 @@ def ensure_codex_binary() -> str:
 
 
 def resolve_default_model(root: Path) -> str | None:
-    """Resolve the newest default visible model from Codex's local models_cache."""
+    """Resolve default model: prefer user's config.toml, then fall back to models_cache."""
+    cfg_path = root / "config.toml"
+    if cfg_path.is_file():
+        try:
+            config = cfg_path.read_text(encoding="utf-8-sig")
+            if tomllib is not None:
+                model = tomllib.loads(config).get("model")
+                if isinstance(model, str) and model.strip():
+                    return model
+            else:
+                for line in config.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("["):
+                        break
+                    match = re.fullmatch(r'''model\s*=\s*(["'])(.+?)\1\s*(?:#.*)?''', stripped)
+                    if match:
+                        return match.group(2)
+        except (OSError, ValueError):
+            pass
+
     for fname in ("models_cache.json", "models_cache.codex_work_desktop.json"):
         cache_path = root / fname
         if not cache_path.is_file():
@@ -816,16 +903,6 @@ def resolve_default_model(root: Path) -> str | None:
         if visible:
             visible.sort(key=lambda m: (m.get("priority") if isinstance(m.get("priority"), (int, float)) else 999999))
             return str(visible[0]["slug"])
-
-    cfg_path = root / "config.toml"
-    if cfg_path.is_file():
-        try:
-            for line in cfg_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                m = re.match(r'^\s*model\s*=\s*["\']([^"\']+)["\']', line)
-                if m:
-                    return m.group(1)
-        except OSError:
-            pass
     return None
 
 
@@ -878,6 +955,8 @@ def run_codex_exec(
             full_cmd,
             input=prompt,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             cwd=exec_cwd,
         )
@@ -946,6 +1025,498 @@ def run_codex_exec(
                 pass
 
 
+def normalize_windows_path(path_str: str) -> str:
+    s = path_str or ""
+    if s[:8].lower() == "\\\\?\\unc\\":
+        return "\\\\" + s[8:]
+    if s.startswith("\\\\?\\") and len(s) > 6 and s[5] == ":":
+        return s[4:]
+    return s
+
+
+def load_registered_projects(root: Path) -> list[dict[str, Any]]:
+    """Load registered Codex Desktop projects and their root paths."""
+    projects: list[dict[str, Any]] = []
+    seen_roots: set[str] = set()
+    db_path = find_latest_state_db(root)
+    if db_path is not None:
+        con = None
+        try:
+            con = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+            con.row_factory = sqlite3.Row
+            tables = {r["name"] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "projects" in tables and "project_roots" in tables:
+                sql = (
+                    "SELECT p.id, p.name, p.position, r.path "
+                    "FROM project_roots r LEFT JOIN projects p ON p.id = r.project_id "
+                    "ORDER BY COALESCE(p.position, 999999), r.position"
+                )
+                for row in con.execute(sql):
+                    raw_path = normalize_windows_path(str(row["path"] or ""))
+                    if not raw_path:
+                        continue
+                    norm_key = os.path.normcase(os.path.normpath(raw_path))
+                    if norm_key in seen_roots:
+                        continue
+                    seen_roots.add(norm_key)
+                    projects.append(
+                        {
+                            "id": row["id"] or "",
+                            "name": row["name"] or Path(raw_path).name,
+                            "path": raw_path,
+                        }
+                    )
+        except sqlite3.Error:
+            pass
+        finally:
+            if con is not None:
+                con.close()
+
+    gs_path = root / ".codex-global-state.json"
+    if gs_path.is_file():
+        try:
+            gs = json.loads(gs_path.read_text(encoding="utf-8", errors="replace"))
+            for key, val in gs.items():
+                if not key.startswith("electron-owner-value:electron-saved-workspace-roots"):
+                    continue
+                if not isinstance(val, list):
+                    continue
+                for item in val:
+                    raw_path = normalize_windows_path(str(item or ""))
+                    if not raw_path:
+                        continue
+                    norm_key = os.path.normcase(os.path.normpath(raw_path))
+                    if norm_key in seen_roots:
+                        continue
+                    seen_roots.add(norm_key)
+                    projects.append({"id": "", "name": Path(raw_path).name, "path": raw_path})
+        except (OSError, json.JSONDecodeError):
+            pass
+    return projects
+
+
+def resolve_client_project_cwd(
+    root: Path,
+    requested_cwd: str | None,
+    match_project_root: bool = True,
+) -> tuple[str, str, dict[str, Any] | None]:
+    """
+    Resolve (thread_cwd, requested_cwd, matched_project).
+    If match_project_root is True and requested_cwd is inside a registered Codex project root,
+    thread_cwd is mapped to the deepest matching registered root so Codex Desktop displays the
+    thread under that project in the sidebar without turn/start overwriting threads.cwd.
+    """
+    raw = normalize_windows_path(requested_cwd) if requested_cwd else os.getcwd()
+    req_path = Path(raw).expanduser()
+    try:
+        req_resolved = str(req_path.resolve())
+    except OSError:
+        req_resolved = str(req_path)
+    req_resolved = normalize_windows_path(req_resolved)
+    req_norm = os.path.normcase(os.path.normpath(req_resolved))
+
+    if not match_project_root:
+        return req_resolved, req_resolved, None
+    projects = load_registered_projects(root)
+    best: dict[str, Any] | None = None
+    best_len = -1
+    for proj in projects:
+        proj_path = normalize_windows_path(str(proj.get("path") or ""))
+        if not proj_path:
+            continue
+        proj_norm = os.path.normcase(os.path.normpath(proj_path))
+        if req_norm == proj_norm or req_norm.startswith(proj_norm.rstrip("\\/") + os.sep):
+            if len(proj_norm) > best_len:
+                best = proj
+                best_len = len(proj_norm)
+
+    if best is not None:
+        return best["path"], req_resolved, best
+    return req_resolved, req_resolved, None
+
+
+def sandbox_mode_to_policy(sandbox: str | None, writable_roots: list[str] | None = None) -> dict[str, Any] | None:
+    if not sandbox:
+        return None
+    if sandbox == "read-only":
+        return {"type": "readOnly", "networkAccess": False}
+    if sandbox == "workspace-write":
+        return {
+            "type": "workspaceWrite",
+            "writableRoots": writable_roots or [],
+            "networkAccess": False,
+        }
+    if sandbox == "danger-full-access":
+        return {"type": "dangerFullAccess"}
+    return None
+
+
+def build_user_input(prompt: str, images: list[str] | None = None) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for img in images or []:
+        img_path = Path(img).expanduser()
+        try:
+            img_resolved = normalize_windows_path(str(img_path.resolve()))
+        except OSError:
+            img_resolved = normalize_windows_path(str(img_path))
+        items.append({"type": "localImage", "path": img_resolved})
+    return items
+
+
+def run_codex_app_server(
+    codex_bin: str,
+    mode: str,
+    prompt: str,
+    *,
+    thread_id: str | None = None,
+    thread_cwd: str | None = None,
+    turn_cwd: str | None = None,
+    sandbox: str | None = "read-only",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    images: list[str] | None = None,
+    ephemeral: bool = False,
+    thread_name: str | None = None,
+    dry_run: bool = False,
+    want_json: bool = False,
+    output_file: str | None = None,
+    matched_project: dict[str, Any] | None = None,
+) -> int:
+    """Start or resume a Codex thread through `codex app-server --stdio` (client-visible source='vscode')."""
+    writable_roots = [turn_cwd] if (sandbox == "workspace-write" and turn_cwd) else []
+    sandbox_policy = sandbox_mode_to_policy(sandbox, writable_roots=writable_roots)
+
+    if dry_run:
+        payload = {
+            "dry_run": True,
+            "transport": "app-server",
+            "mode": mode,
+            "thread_id": thread_id,
+            "thread_cwd": thread_cwd,
+            "turn_cwd": turn_cwd,
+            "matched_project": matched_project,
+            "thread_name": thread_name,
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "sandbox": sandbox,
+            "command": [codex_bin, "app-server", "--stdio"],
+            "prompt_preview": compact_one_line(prompt, 200),
+        }
+        if want_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("TRANSPORT:", "app-server (client-visible, source=vscode)")
+            if matched_project:
+                print(f"PROJECT  : {matched_project['name']} ({matched_project['path']})")
+            if thread_cwd:
+                print("THREADCWD:", thread_cwd)
+            if turn_cwd and turn_cwd != thread_cwd:
+                print("TURN CWD :", turn_cwd)
+            if thread_id:
+                print("THREAD ID:", thread_id)
+            if thread_name:
+                print("NAME     :", thread_name)
+            if model:
+                print("MODEL    :", model)
+            if reasoning_effort:
+                print("REASONING:", reasoning_effort)
+            print("DRY RUN  :", f"{codex_bin} app-server --stdio ({mode})")
+            print("PROMPT   :", compact_one_line(prompt, 200))
+        return 0
+
+    proc = subprocess.Popen(
+        [codex_bin, "app-server", "--stdio"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+
+    stderr_lines: deque[str] = deque(maxlen=15)
+
+    def _drain_stderr() -> None:
+        try:
+            for line in proc.stderr:
+                stderr_lines.append(line.rstrip("\r\n"))
+        except Exception:
+            pass
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    rpc_id = 0
+    errors: list[str] = []
+    usage: Any = None
+    delta_chunks: list[str] = []
+    completed_agent_messages: list[tuple[str | None, str]] = []
+    turn_completed_payload: dict[str, Any] | None = None
+    active_thread_id: str | None = thread_id
+    target_turn_id: str | None = None
+
+    def _write_msg(obj: dict[str, Any]) -> None:
+        proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        proc.stdin.flush()
+
+    def _handle_server_request(msg: dict[str, Any]) -> None:
+        req_id = msg.get("id")
+        method = str(msg.get("method") or "")
+        errors.append(f"server_request_declined:{method}")
+        if method in ("item/commandExecution/requestApproval", "item/fileChange/requestApproval"):
+            _write_msg({"jsonrpc": "2.0", "id": req_id, "result": {"decision": "decline"}})
+        else:
+            _write_msg(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Non-interactive codex-bridge declined {method}"},
+                }
+            )
+
+    def _handle_notification(msg: dict[str, Any]) -> None:
+        nonlocal usage, turn_completed_payload
+        method = str(msg.get("method") or "")
+        params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+        turn_id = params.get("turnId")
+        if method == "turn/completed":
+            turn_id = (params.get("turn") or {}).get("id")
+        if not target_turn_id or turn_id != target_turn_id or params.get("threadId") != active_thread_id:
+            return
+        if method == "item/agentMessage/delta":
+            delta = params.get("delta")
+            if isinstance(delta, str):
+                delta_chunks.append(delta)
+        elif method == "item/completed":
+            item = params.get("item")
+            if isinstance(item, dict) and item.get("type") == "agentMessage":
+                text = str(item.get("text") or "").strip()
+                if text:
+                    completed_agent_messages.append((item.get("phase"), text))
+        elif method == "thread/tokenUsage/updated":
+            usage = params.get("tokenUsage") or params
+        elif method == "error":
+            errors.append(json.dumps(params, ensure_ascii=False))
+        elif method == "turn/completed":
+            turn_completed_payload = params
+
+    def _read_message(waiting_for: str) -> dict[str, Any]:
+        while True:
+            raw = proc.stdout.readline()
+            if raw == "":
+                raise RuntimeError(f"codex app-server closed stdout while waiting for {waiting_for}")
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
+                continue
+            if "id" in msg and "method" in msg:
+                _handle_server_request(msg)
+                continue
+            return msg
+
+    def _rpc_call(method: str, params: dict[str, Any], pending: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        nonlocal rpc_id
+        rpc_id += 1
+        cur_id = rpc_id
+        _write_msg({"jsonrpc": "2.0", "id": cur_id, "method": method, "params": params})
+        while True:
+            msg = _read_message(method)
+            if pending is not None and "method" in msg:
+                pending.append(msg)
+            if msg.get("id") == cur_id:
+                if "error" in msg and msg["error"] is not None:
+                    raise RuntimeError(f"{method} failed: {json.dumps(msg['error'], ensure_ascii=False)}")
+                res = msg.get("result")
+                return res if isinstance(res, dict) else {}
+
+    returncode = 0
+    try:
+        _rpc_call(
+            "initialize",
+            {
+                "clientInfo": {
+                    "name": "codex-bridge",
+                    "title": "Codex Bridge",
+                    "version": "1.1.0",
+                }
+            },
+        )
+        _write_msg({"jsonrpc": "2.0", "method": "initialized"})
+
+        if mode == "start":
+            start_params: dict[str, Any] = {
+                "approvalPolicy": "never",
+                "ephemeral": bool(ephemeral),
+                "threadSource": "user",
+            }
+            if thread_cwd:
+                start_params["cwd"] = thread_cwd
+            if model:
+                start_params["model"] = model
+            if sandbox:
+                start_params["sandbox"] = sandbox
+            start_res = _rpc_call("thread/start", start_params)
+            thread_obj = start_res.get("thread") if isinstance(start_res.get("thread"), dict) else {}
+            active_thread_id = str(thread_obj.get("id") or "")
+            if not active_thread_id:
+                raise RuntimeError(f"thread/start did not return thread.id: {start_res}")
+        else:
+            if not active_thread_id:
+                raise RuntimeError("Missing thread_id for send mode.")
+            resume_params: dict[str, Any] = {
+                "threadId": active_thread_id,
+                "approvalPolicy": "never",
+            }
+            if thread_cwd:
+                resume_params["cwd"] = thread_cwd
+            if model:
+                resume_params["model"] = model
+            if sandbox:
+                resume_params["sandbox"] = sandbox
+            _rpc_call("thread/resume", resume_params)
+
+        turn_params: dict[str, Any] = {
+            "threadId": active_thread_id,
+            "input": build_user_input(prompt, images),
+            "approvalPolicy": "never",
+        }
+        if model:
+            turn_params["model"] = model
+        if reasoning_effort:
+            turn_params["effort"] = reasoning_effort
+        if sandbox_policy:
+            turn_params["sandboxPolicy"] = sandbox_policy
+        if turn_cwd:
+            turn_params["cwd"] = turn_cwd
+
+        # Notifications can arrive before the response identifies our turn.
+        early_notifications: list[dict[str, Any]] = []
+        turn_res = _rpc_call("turn/start", turn_params, early_notifications)
+        turn_obj = turn_res.get("turn") if isinstance(turn_res.get("turn"), dict) else {}
+        target_turn_id = turn_obj.get("id")
+        if not target_turn_id:
+            raise RuntimeError("turn/start did not return turn.id")
+        for msg in early_notifications:
+            _handle_notification(msg)
+        while turn_completed_payload is None:
+            _handle_notification(_read_message("turn/completed"))
+
+        done_turn = turn_completed_payload.get("turn") if isinstance(turn_completed_payload.get("turn"), dict) else {}
+        turn_status = str(done_turn.get("status") or "")
+        if turn_status != "completed":
+            returncode = 1
+            errors.append(f"Turn ended with status {turn_status or 'unknown'}")
+            if done_turn.get("error"):
+                errors.append(json.dumps(done_turn["error"], ensure_ascii=False))
+
+        if thread_name and active_thread_id:
+            try:
+                _rpc_call("thread/name/set", {"threadId": active_thread_id, "name": thread_name})
+            except Exception as exc:
+                returncode = 1
+                errors.append(f"thread/name/set: {exc}")
+
+        # Best-effort unsubscribe so the writer lock is released cleanly before exit
+        if active_thread_id:
+            try:
+                _rpc_call("thread/unsubscribe", {"threadId": active_thread_id})
+            except Exception:
+                pass
+    except Exception as exc:
+        returncode = 1
+        errors.append(str(exc))
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        stderr_thread.join(timeout=1)
+
+    last_message = ""
+    finals = [txt for phase, txt in completed_agent_messages if phase == "final_answer"]
+    if finals:
+        last_message = finals[-1]
+    elif completed_agent_messages:
+        last_message = completed_agent_messages[-1][1]
+    elif delta_chunks:
+        last_message = "".join(delta_chunks).strip()
+    elif turn_completed_payload:
+        done_turn = turn_completed_payload.get("turn") if isinstance(turn_completed_payload.get("turn"), dict) else {}
+        for item in done_turn.get("items") or []:
+            if isinstance(item, dict) and item.get("type") == "agentMessage" and item.get("text"):
+                last_message = str(item["text"]).strip()
+
+    if output_file and (last_message or returncode == 0):
+        out_path = Path(output_file).expanduser()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(last_message + "\n" if last_message else "", encoding="utf-8")
+
+    result = {
+        "returncode": returncode,
+        "transport": "app-server",
+        "thread_id": active_thread_id,
+        "thread_cwd": thread_cwd,
+        "turn_cwd": turn_cwd,
+        "matched_project": matched_project,
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "usage": usage,
+        "last_message": last_message,
+        "errors": errors,
+        "stderr_tail": "\n".join(stderr_lines),
+    }
+
+    if want_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        if active_thread_id:
+            print(f"Thread ID : {active_thread_id}")
+        if matched_project:
+            print(f"Project   : {matched_project['name']} ({matched_project['path']})")
+        elif thread_cwd:
+            print(f"CWD       : {thread_cwd}")
+        if model or reasoning_effort:
+            print(f"Model     : {model or '(cli-default)'}  | reasoning: {reasoning_effort or '(cli-default)'}")
+        if last_message:
+            print("\n--- Codex Reply ---")
+            print(last_message)
+        if errors:
+            print("\n--- Errors ---", file=sys.stderr)
+            for err in errors:
+                print(err, file=sys.stderr)
+        if returncode != 0 and result["stderr_tail"]:
+            print(result["stderr_tail"], file=sys.stderr)
+    return returncode
+
+
+def cmd_projects(args: argparse.Namespace) -> int:
+    root = codex_home()
+    projects = load_registered_projects(root)
+    if args.json:
+        print(json.dumps({"projects": projects}, ensure_ascii=False, indent=2))
+        return 0
+    if not projects:
+        print(f"No registered Codex Desktop projects found under {root}.")
+        return 0
+    print(f"Registered Codex Desktop projects ({len(projects)}):\n")
+    for idx, p in enumerate(projects, start=1):
+        print(f"{idx:2d}. {p['name']:<24} {p['path']}")
+    return 0
+
+
 def cmd_send(args: argparse.Namespace) -> int:
     root = codex_home()
     codex_bin = ensure_codex_binary()
@@ -976,12 +1547,36 @@ def cmd_send(args: argparse.Namespace) -> int:
     if not args.force and locked:
         raise SystemExit(
             f"Refusing to send: session {sid} currently holds an active writer lock (likely open in Codex App/TUI), "
-            "so `codex exec resume` will fail with `already has an active writer`. "
+            "so resuming it will fail with `already has an active writer`. "
             "Close/unload the thread in Codex App first or pass --force."
         )
 
     model = args.model or resolve_default_model(root)
     reasoning_effort = args.reasoning_effort
+
+    exec_cwd = None
+    session_cwd = normalize_windows_path(str(session.get("cwd") or ""))
+    if args.exec_cwd:
+        exec_cwd = normalize_windows_path(str(Path(args.exec_cwd).expanduser().resolve()))
+    elif session_cwd and Path(session_cwd).is_dir():
+        exec_cwd = session_cwd
+
+    if args.via == "app-server":
+        return run_codex_app_server(
+            codex_bin,
+            "send",
+            prompt,
+            thread_id=sid,
+            thread_cwd=session_cwd if session_cwd and Path(session_cwd).is_dir() else None,
+            turn_cwd=exec_cwd,
+            sandbox=args.sandbox,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            images=args.image,
+            dry_run=args.dry_run,
+            want_json=args.json,
+            output_file=args.output_file,
+        )
 
     cmd = [codex_bin, "exec", "resume", "--json"]
     if args.all:
@@ -998,13 +1593,6 @@ def cmd_send(args: argparse.Namespace) -> int:
         cmd.extend(["-i", img])
     cmd.append(sid)
 
-    exec_cwd = None
-    session_cwd = str(session.get("cwd") or "").strip()
-    if args.exec_cwd:
-        exec_cwd = str(Path(args.exec_cwd).expanduser())
-    elif session_cwd and Path(session_cwd).is_dir():
-        exec_cwd = session_cwd
-
     return run_codex_exec(
         cmd,
         prompt,
@@ -1018,12 +1606,51 @@ def cmd_send(args: argparse.Namespace) -> int:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    if args.name and args.via == "exec":
+        raise SystemExit("--name requires --via app-server.")
     root = codex_home()
     codex_bin = ensure_codex_binary()
     prompt = read_prompt(args.prompt, args.prompt_file)
 
     model = args.model or resolve_default_model(root)
     reasoning_effort = args.reasoning_effort
+
+    if args.via == "app-server":
+        thread_cwd, requested_cwd, matched_project = resolve_client_project_cwd(
+            root,
+            args.cwd,
+            match_project_root=not args.exact_cwd,
+        )
+        if not args.json and not args.exact_cwd:
+            if matched_project is None:
+                print(
+                    f"Note: '{thread_cwd}' is not in Codex Desktop's registered project roots; "
+                    "add that folder in Codex Desktop to view the thread in the sidebar.",
+                    file=sys.stderr,
+                )
+            elif os.path.normcase(os.path.normpath(requested_cwd)) != os.path.normcase(os.path.normpath(thread_cwd)):
+                print(
+                    f"Note: mapped cwd '{requested_cwd}' to registered Codex project root '{thread_cwd}' "
+                    "so the thread stays visible in Codex Desktop (use --exact-cwd to keep the subdirectory).",
+                    file=sys.stderr,
+                )
+        return run_codex_app_server(
+            codex_bin,
+            "start",
+            prompt,
+            thread_cwd=thread_cwd,
+            turn_cwd=thread_cwd,
+            sandbox=args.sandbox,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            images=args.image,
+            ephemeral=args.ephemeral,
+            thread_name=args.name,
+            dry_run=args.dry_run,
+            want_json=args.json,
+            output_file=args.output_file,
+            matched_project=matched_project,
+        )
 
     cmd = [codex_bin, "exec", "--json"]
     if args.cwd:
@@ -1090,7 +1717,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--json", action="store_true", help="Output JSON.")
     p_search.set_defaults(func=cmd_search)
 
-    p_send = sub.add_parser("send", help="Resume and send a prompt to an existing Codex session via `codex exec resume`.")
+    p_projects = sub.add_parser("projects", help="List Codex Desktop registered projects and root paths.")
+    p_projects.add_argument("--json", action="store_true", help="Output JSON.")
+    p_projects.set_defaults(func=cmd_projects)
+
+    p_send = sub.add_parser("send", help="Resume and send a prompt to an existing Codex session.")
     p_send.add_argument("target", nargs="?", help="Session UUID, UUID prefix, or thread name.")
     p_send.add_argument("prompt", nargs="?", help="Prompt text (or '-' to read from stdin).")
     p_send.add_argument("-p", "--prompt", dest="prompt_opt", help="Explicit prompt text (handy with --last).")
@@ -1099,12 +1730,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_send.add_argument("--exec-cwd", help="Override subprocess working directory (defaults to the session's recorded cwd if it exists).")
     p_send.add_argument("--prompt-file", help="Read prompt from a file instead of CLI argument.")
     p_send.add_argument(
+        "--via",
+        choices=["app-server", "exec"],
+        default="app-server",
+        help="Transport protocol (default: app-server; use exec for legacy CLI mode).",
+    )
+    p_send.add_argument(
         "--sandbox",
         choices=["read-only", "workspace-write", "danger-full-access"],
         default="read-only",
         help="Codex sandbox mode override (default: read-only).",
     )
-    p_send.add_argument("-m", "--model", help="Override model (defaults to top visible model in models_cache.json).")
+    p_send.add_argument("-m", "--model", help="Override model (defaults to config.toml, then the visible model cache).")
     p_send.add_argument(
         "-r",
         "--reasoning-effort",
@@ -1120,17 +1757,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_send.add_argument("--json", action="store_true", help="Output JSON.")
     p_send.set_defaults(func=cmd_send)
 
-    p_start = sub.add_parser("start", help="Start a new non-interactive Codex session via `codex exec`.")
+    p_start = sub.add_parser("start", help="Start a new Codex session (client-visible via app-server by default).")
     p_start.add_argument("prompt", nargs="?", help="Prompt text (or '-' to read from stdin).")
     p_start.add_argument("--prompt-file", help="Read prompt from a file.")
     p_start.add_argument("-C", "--cwd", help="Working directory for the new Codex session.")
+    p_start.add_argument("--name", help="Optional display name/title for the new Codex thread.")
+    p_start.add_argument(
+        "--via",
+        choices=["app-server", "exec"],
+        default="app-server",
+        help="Transport protocol (default: app-server so Codex Desktop shows the thread; exec hides it from sidebar).",
+    )
+    p_start.add_argument(
+        "--exact-cwd",
+        action="store_true",
+        help="Do not map subdirectory cwd to its registered Codex Desktop project root.",
+    )
     p_start.add_argument(
         "--sandbox",
         choices=["read-only", "workspace-write", "danger-full-access"],
         default="read-only",
         help="Codex sandbox mode (default: read-only).",
     )
-    p_start.add_argument("-m", "--model", help="Override model (defaults to top visible model in models_cache.json).")
+    p_start.add_argument("-m", "--model", help="Override model (defaults to config.toml, then the visible model cache).")
     p_start.add_argument(
         "-r",
         "--reasoning-effort",
@@ -1149,6 +1798,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     parser = build_parser()
     args = parser.parse_args()
     return args.func(args)
