@@ -21,8 +21,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+from collections import deque
 from pathlib import Path
 from typing import Any
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11
+    tomllib = None
 
 try:
     import fcntl  # type: ignore[import-not-found]
@@ -773,7 +779,7 @@ def read_prompt(prompt_arg: str | None, prompt_file: str | None) -> str:
     raise SystemExit("Provide a prompt argument, '-' for stdin, or --prompt-file.")
 
 
-def parse_codex_version(binary: str) -> tuple[int, int, int, int, int]:
+def parse_codex_version(binary: str) -> tuple[int, int, int, int, tuple[int, ...]]:
     """Return comparable version tuple for a codex CLI binary (higher is newer)."""
     try:
         proc = subprocess.run(
@@ -786,15 +792,15 @@ def parse_codex_version(binary: str) -> tuple[int, int, int, int, int]:
         )
         text = (proc.stdout or "") + "\n" + (proc.stderr or "")
     except Exception:
-        return (0, 0, 0, 0, 0)
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-(?:alpha|beta|rc)\.?(\d+))?", text)
+        return (0, 0, 0, 0, ())
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.?(\d+(?:\.\d+)*))?", text)
     if not m:
-        return (0, 0, 0, 0, 0)
+        return (0, 0, 0, 0, ())
     major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
     # Stable release (no pre-release suffix) ranks above pre-release of same x.y.z
-    if m.group(4) is None:
-        return (major, minor, patch, 1, 0)
-    return (major, minor, patch, 0, int(m.group(4)))
+    stage = {"alpha": 0, "beta": 1, "rc": 2, None: 3}[m.group(4)]
+    revision = tuple(map(int, m.group(5).split("."))) if m.group(5) else ()
+    return (major, minor, patch, stage, revision)
 
 
 def ensure_codex_binary() -> str:
@@ -802,15 +808,17 @@ def ensure_codex_binary() -> str:
     if override:
         p = Path(override).expanduser()
         if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
+            return str(p.resolve())
         raise SystemExit(f"CODEX_BRIDGE_BIN is not an executable file: {override}")
 
     candidates: list[str] = []
-    fixed_paths: list[str] = [
-        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-        "/Applications/Codex.app/Contents/Resources/codex",
-        "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-    ]
+    fixed_paths: list[str] = []
+    if sys.platform == "darwin":
+        fixed_paths.extend((
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        ))
     if os.name == "nt":
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
@@ -829,17 +837,24 @@ def ensure_codex_binary() -> str:
                 for match in glob.glob(str(Path(prog_root) / rel)):
                     if match not in fixed_paths:
                         fixed_paths.append(match)
+        # On older Windows Python versions shutil.which implicitly searches the
+        # current project first. Only probe installations on explicit PATH roots.
+        for entry in os.get_exec_path():
+            directory = Path(entry.strip('"'))
+            if directory.is_absolute():
+                for name in ("codex.exe", "codex.cmd", "codex.bat"):
+                    fixed_paths.append(str(directory / name))
+    else:
+        which_bin = shutil.which("codex")
+        if which_bin:
+            fixed_paths.append(which_bin)
 
     for fixed in fixed_paths:
         if fixed not in candidates and Path(fixed).is_file() and os.access(fixed, os.X_OK):
             candidates.append(fixed)
 
-    which_bin = shutil.which("codex")
-    if which_bin and which_bin not in candidates:
-        candidates.append(which_bin)
-
     if not candidates:
-        raise SystemExit("`codex` binary not found in PATH or known macOS app bundles.")
+        raise SystemExit("Codex binary not found on PATH or in known installation directories.")
 
     if len(candidates) == 1:
         return candidates[0]
@@ -853,18 +868,20 @@ def resolve_default_model(root: Path) -> str | None:
     cfg_path = root / "config.toml"
     if cfg_path.is_file():
         try:
-            in_section = False
-            for line in cfg_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                stripped = line.strip()
-                if stripped.startswith("[") and not stripped.startswith("[["):
-                    in_section = True
-                    continue
-                if in_section:
-                    continue
-                m = re.match(r'^model\s*=\s*["\']([^"\']+)["\']', stripped)
-                if m:
-                    return m.group(1)
-        except OSError:
+            config = cfg_path.read_text(encoding="utf-8-sig")
+            if tomllib is not None:
+                model = tomllib.loads(config).get("model")
+                if isinstance(model, str) and model.strip():
+                    return model
+            else:
+                for line in config.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("["):
+                        break
+                    match = re.fullmatch(r'''model\s*=\s*(["'])(.+?)\1\s*(?:#.*)?''', stripped)
+                    if match:
+                        return match.group(2)
+        except (OSError, ValueError):
             pass
 
     for fname in ("models_cache.json", "models_cache.codex_work_desktop.json"):
@@ -1009,7 +1026,9 @@ def run_codex_exec(
 
 
 def normalize_windows_path(path_str: str) -> str:
-    s = (path_str or "").strip()
+    s = path_str or ""
+    if s[:8].lower() == "\\\\?\\unc\\":
+        return "\\\\" + s[8:]
     if s.startswith("\\\\?\\") and len(s) > 6 and s[5] == ":":
         return s[4:]
     return s
@@ -1096,6 +1115,8 @@ def resolve_client_project_cwd(
     req_resolved = normalize_windows_path(req_resolved)
     req_norm = os.path.normcase(os.path.normpath(req_resolved))
 
+    if not match_project_root:
+        return req_resolved, req_resolved, None
     projects = load_registered_projects(root)
     best: dict[str, Any] | None = None
     best_len = -1
@@ -1109,9 +1130,9 @@ def resolve_client_project_cwd(
                 best = proj
                 best_len = len(proj_norm)
 
-    if match_project_root and best is not None:
+    if best is not None:
         return best["path"], req_resolved, best
-    return req_resolved, req_resolved, best
+    return req_resolved, req_resolved, None
 
 
 def sandbox_mode_to_policy(sandbox: str | None, writable_roots: list[str] | None = None) -> dict[str, Any] | None:
@@ -1215,7 +1236,7 @@ def run_codex_app_server(
     )
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
 
-    stderr_lines: list[str] = []
+    stderr_lines: deque[str] = deque(maxlen=15)
 
     def _drain_stderr() -> None:
         try:
@@ -1234,6 +1255,7 @@ def run_codex_app_server(
     completed_agent_messages: list[tuple[str | None, str]] = []
     turn_completed_payload: dict[str, Any] | None = None
     active_thread_id: str | None = thread_id
+    target_turn_id: str | None = None
 
     def _write_msg(obj: dict[str, Any]) -> None:
         proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
@@ -1258,6 +1280,11 @@ def run_codex_app_server(
         nonlocal usage, turn_completed_payload
         method = str(msg.get("method") or "")
         params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+        turn_id = params.get("turnId")
+        if method == "turn/completed":
+            turn_id = (params.get("turn") or {}).get("id")
+        if not target_turn_id or turn_id != target_turn_id or params.get("threadId") != active_thread_id:
+            return
         if method == "item/agentMessage/delta":
             delta = params.get("delta")
             if isinstance(delta, str):
@@ -1275,20 +1302,13 @@ def run_codex_app_server(
         elif method == "turn/completed":
             turn_completed_payload = params
 
-    def _rpc_call(method: str, params: dict[str, Any]) -> dict[str, Any]:
-        nonlocal rpc_id
-        rpc_id += 1
-        cur_id = rpc_id
-        _write_msg({"jsonrpc": "2.0", "id": cur_id, "method": method, "params": params})
+    def _read_message(waiting_for: str) -> dict[str, Any]:
         while True:
             raw = proc.stdout.readline()
             if raw == "":
-                raise RuntimeError(f"codex app-server closed stdout while waiting for {method}")
-            line = raw.strip()
-            if not line:
-                continue
+                raise RuntimeError(f"codex app-server closed stdout while waiting for {waiting_for}")
             try:
-                msg = json.loads(line)
+                msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
             if not isinstance(msg, dict):
@@ -1296,9 +1316,17 @@ def run_codex_app_server(
             if "id" in msg and "method" in msg:
                 _handle_server_request(msg)
                 continue
-            if "method" in msg and "id" not in msg:
-                _handle_notification(msg)
-                continue
+            return msg
+
+    def _rpc_call(method: str, params: dict[str, Any], pending: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        nonlocal rpc_id
+        rpc_id += 1
+        cur_id = rpc_id
+        _write_msg({"jsonrpc": "2.0", "id": cur_id, "method": method, "params": params})
+        while True:
+            msg = _read_message(method)
+            if pending is not None and "method" in msg:
+                pending.append(msg)
             if msg.get("id") == cur_id:
                 if "error" in msg and msg["error"] is not None:
                     raise RuntimeError(f"{method} failed: {json.dumps(msg['error'], ensure_ascii=False)}")
@@ -1365,36 +1393,23 @@ def run_codex_app_server(
         if turn_cwd:
             turn_params["cwd"] = turn_cwd
 
-        turn_res = _rpc_call("turn/start", turn_params)
+        # Notifications can arrive before the response identifies our turn.
+        early_notifications: list[dict[str, Any]] = []
+        turn_res = _rpc_call("turn/start", turn_params, early_notifications)
         turn_obj = turn_res.get("turn") if isinstance(turn_res.get("turn"), dict) else {}
         target_turn_id = turn_obj.get("id")
-
+        if not target_turn_id:
+            raise RuntimeError("turn/start did not return turn.id")
+        for msg in early_notifications:
+            _handle_notification(msg)
         while turn_completed_payload is None:
-            raw = proc.stdout.readline()
-            if raw == "":
-                raise RuntimeError("codex app-server closed stdout before turn/completed")
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(msg, dict):
-                continue
-            if "id" in msg and "method" in msg:
-                _handle_server_request(msg)
-            elif "method" in msg and "id" not in msg:
-                _handle_notification(msg)
-                if turn_completed_payload is not None and target_turn_id:
-                    done_turn = turn_completed_payload.get("turn") if isinstance(turn_completed_payload.get("turn"), dict) else {}
-                    if done_turn.get("id") and done_turn.get("id") != target_turn_id:
-                        turn_completed_payload = None
+            _handle_notification(_read_message("turn/completed"))
 
         done_turn = turn_completed_payload.get("turn") if isinstance(turn_completed_payload.get("turn"), dict) else {}
         turn_status = str(done_turn.get("status") or "")
-        if turn_status == "failed":
+        if turn_status != "completed":
             returncode = 1
+            errors.append(f"Turn ended with status {turn_status or 'unknown'}")
             if done_turn.get("error"):
                 errors.append(json.dumps(done_turn["error"], ensure_ascii=False))
 
@@ -1402,6 +1417,7 @@ def run_codex_app_server(
             try:
                 _rpc_call("thread/name/set", {"threadId": active_thread_id, "name": thread_name})
             except Exception as exc:
+                returncode = 1
                 errors.append(f"thread/name/set: {exc}")
 
         # Best-effort unsubscribe so the writer lock is released cleanly before exit
@@ -1426,6 +1442,7 @@ def run_codex_app_server(
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
         stderr_thread.join(timeout=1)
 
     last_message = ""
@@ -1442,10 +1459,10 @@ def run_codex_app_server(
             if isinstance(item, dict) and item.get("type") == "agentMessage" and item.get("text"):
                 last_message = str(item["text"]).strip()
 
-    if output_file and last_message:
+    if output_file and (last_message or returncode == 0):
         out_path = Path(output_file).expanduser()
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(last_message + "\n", encoding="utf-8")
+        out_path.write_text(last_message + "\n" if last_message else "", encoding="utf-8")
 
     result = {
         "returncode": returncode,
@@ -1459,7 +1476,7 @@ def run_codex_app_server(
         "usage": usage,
         "last_message": last_message,
         "errors": errors,
-        "stderr_tail": "\n".join(stderr_lines[-15:]) if stderr_lines else "",
+        "stderr_tail": "\n".join(stderr_lines),
     }
 
     if want_json:
@@ -1540,7 +1557,7 @@ def cmd_send(args: argparse.Namespace) -> int:
     exec_cwd = None
     session_cwd = normalize_windows_path(str(session.get("cwd") or ""))
     if args.exec_cwd:
-        exec_cwd = normalize_windows_path(str(Path(args.exec_cwd).expanduser()))
+        exec_cwd = normalize_windows_path(str(Path(args.exec_cwd).expanduser().resolve()))
     elif session_cwd and Path(session_cwd).is_dir():
         exec_cwd = session_cwd
 
@@ -1550,7 +1567,7 @@ def cmd_send(args: argparse.Namespace) -> int:
             "send",
             prompt,
             thread_id=sid,
-            thread_cwd=exec_cwd,
+            thread_cwd=session_cwd if session_cwd and Path(session_cwd).is_dir() else None,
             turn_cwd=exec_cwd,
             sandbox=args.sandbox,
             model=model,
@@ -1589,6 +1606,8 @@ def cmd_send(args: argparse.Namespace) -> int:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    if args.name and args.via == "exec":
+        raise SystemExit("--name requires --via app-server.")
     root = codex_home()
     codex_bin = ensure_codex_binary()
     prompt = read_prompt(args.prompt, args.prompt_file)
@@ -1602,7 +1621,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             args.cwd,
             match_project_root=not args.exact_cwd,
         )
-        if not args.json and matched_project is None:
+        if not args.json and not args.exact_cwd and matched_project is None:
             print(
                 f"Note: '{thread_cwd}' is not in Codex Desktop's registered project roots; "
                 "add that folder in Codex Desktop to view the thread in the sidebar.",
@@ -1715,7 +1734,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="read-only",
         help="Codex sandbox mode override (default: read-only).",
     )
-    p_send.add_argument("-m", "--model", help="Override model (defaults to top visible model in models_cache.json).")
+    p_send.add_argument("-m", "--model", help="Override model (defaults to config.toml, then the visible model cache).")
     p_send.add_argument(
         "-r",
         "--reasoning-effort",
@@ -1753,7 +1772,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="read-only",
         help="Codex sandbox mode (default: read-only).",
     )
-    p_start.add_argument("-m", "--model", help="Override model (defaults to top visible model in models_cache.json).")
+    p_start.add_argument("-m", "--model", help="Override model (defaults to config.toml, then the visible model cache).")
     p_start.add_argument(
         "-r",
         "--reasoning-effort",
