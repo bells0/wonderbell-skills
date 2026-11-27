@@ -32,14 +32,17 @@ By default the script reads `$CODEX_HOME` (falling back to `~/.codex`):
    - Next run `read <id> --last-turns 10` (or `--final-only`) to inspect recent conclusions without flooding context.
    - Only add `--include-tools`, `--last-turns 0`, or `--max-chars 0` when deeper tool logs or full history are actually needed.
 3. **Safe driving guardrails (`send` / `start`)**:
-   - **Binary, default model & reasoning**: `send` and `start` automatically pick the highest-version local `codex` CLI binary (checking macOS ChatGPT/Codex app bundles as well as `PATH`, overridable via `CODEX_BRIDGE_BIN`), select the newest default visible model from `$CODEX_HOME/models_cache.json` (lowest `priority` with `visibility == "list"`), and set `-c model_reasoning_effort="high"`. Override with `-m <model>` or `-r <effort>` only when needed.
+   - **Client-visible default (`app-server`)**: `start` and `send` default to `--via app-server` (`codex app-server --stdio`), which persists threads with interactive `source="vscode"` so they appear in the Codex Desktop sidebar (unlike legacy `codex exec`, whose `source="exec"` threads are hidden by default). Pass `--via exec` only if you specifically want headless `codex exec` behavior.
+   - **Project root matching**: `start` automatically maps a subdirectory `-C` to its registered Codex Desktop project root (from `state_*.sqlite`'s `project_roots`) for `thread.cwd` while keeping the requested subdirectory for the turn, so the new chat appears under the right project in Codex Desktop. Use `projects` to inspect registered roots, or `--exact-cwd` to disable mapping.
+   - **Binary, default model & reasoning**: `send` and `start` automatically pick the highest-version local `codex` CLI binary (checking macOS ChatGPT/Codex app bundles, Windows Codex install path, and `PATH`, overridable via `CODEX_BRIDGE_BIN`), select the newest default visible model from `$CODEX_HOME/models_cache.json` (lowest `priority` with `visibility == "list"`), and set reasoning effort to `high`. Override with `-m <model>` or `-r <effort>` only when needed.
    - Default sandbox for Codex execution is `read-only`. Only pass `--sandbox workspace-write` when the user explicitly wants Codex to edit files or run mutating commands. Never use `danger-full-access` unless the user explicitly requests it.
-   - Before `send`, confirm the resolved session ID, project `cwd`, and that the thread is **not busy**. The script automatically runs `codex exec resume` inside the session's recorded `cwd` (when that directory exists) so resuming does not drift the thread's project root, and refuses to send if an active turn is detected (`[RUNNING]`). Do not pass `--force` while Codex App/TUI is actively executing that thread.
+   - Before `send`, confirm the resolved session ID, project `cwd`, and that the thread is **not busy**. The script automatically runs inside the session's recorded `cwd` (when that directory exists) so resuming does not drift the thread's project root, and refuses to send if an active turn or writer lock is detected (`[RUNNING]` / `[LOCKED]`). Do not pass `--force` while Codex App/TUI is actively holding that thread.
    - For multi-line or complex prompts, write the prompt to a temporary file and pass `--prompt-file <file>` (or pipe via stdin with `-`) to avoid shell quoting bugs.
 
 ## Standard Commands
 
 Let `SCRIPT` be the path to `scripts/codex_bridge.py` inside this skill directory.
+On Windows, if `python3` points to the Microsoft Store stub, invoke the script with a real Python 3 interpreter (e.g., `python`, `py -3`, or `uv run python`).
 
 ### 1. List Recent Sessions
 
@@ -82,13 +85,17 @@ python3 "$SCRIPT" send <SESSION_ID> "总结你当前这轮改动和未完成项"
 python3 "$SCRIPT" send <SESSION_ID> "按计划修复单测并跑一遍验证" --sandbox workspace-write
 ```
 
-### 5. Start a New Non-Interactive Codex Session
+### 5. Start a New Codex Session (Visible in Codex Desktop)
 
 ```bash
-python3 "$SCRIPT" start "检查当前仓库的构建配置并给出风险清单" -C /path/to/repo --sandbox read-only
+# List Codex Desktop registered project roots
+python3 "$SCRIPT" projects
+
+# Start a client-visible thread in a registered project with an optional name
+python3 "$SCRIPT" start "检查当前仓库的构建配置并给出风险清单" -C /path/to/repo --name "构建配置风险排查" --sandbox read-only
 ```
 
-The command returns the new `Thread ID`, which can be passed to `read <Thread ID>` or `send <Thread ID>` in follow-up turns.
+The command returns the new `Thread ID` (with `source=vscode`), which appears under the matched project in Codex Desktop (refresh/reload the client if it was already open) and can be passed to `read <Thread ID>` or `send <Thread ID>` in follow-up turns.
 
 ## Troubleshooting
 
