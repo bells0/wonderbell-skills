@@ -16,3 +16,5 @@
   enabled: true
 - name: workbuddy-bridge
   enabled: true
+- name: codex-antigravity-collab
+  enabled: true

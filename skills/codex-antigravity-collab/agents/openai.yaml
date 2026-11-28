@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex + Antigravity Collab"
+  short_description: "Orchestrate task handoff, joint spec review, and build-review-fix loops between Codex and Antigravity"
+  default_prompt: "Use $codex-antigravity-collab to coordinate task handoff, joint design/contract review, or an independent read-only code review closure loop between Codex and Antigravity."
